@@ -1,118 +1,126 @@
 (function() {
     'use strict';
 
-    // --- 1. UNIVERSAL SELECTOR LIST ---
-    // Combined list for Articulate, iSpring, Captivate, and Polish Moodle
-    const TARGET_SELECTORS = [
-        // Articulate / Storyline (First Player)
-        '#next', 
-        '#linkNext',
-        'button[aria-label="Next"]',
-        'button[aria-label="Dalej"]',
-        
-        // iSpring (Second Player)
-        '.next-button',
-        '.tech_next_btn',
-        'div[title="Next"]',
-        'div[title="Dalej"]',
-        '.player_navbar_right_control',
-        '.ispring-button-next'
+    // --- CONFIGURATION ---
+    
+    // 1. The Big "Start" Overlay (Must click this first if present)
+    const START_OVERLAYS = [
+        '.play-button', 
+        '.start-button',
+        '.big-play-btn',
+        '#sys-start-btn',
+        '.click-to-start'
     ];
 
-    const DISABLED_CLASSES = ['cs-disabled', 'disabled', 'blocked', 'hidden', 'state-disabled'];
-    
+    // 2. The "Next" Navigation Buttons (iSpring specific)
+    const NEXT_BUTTONS = [
+        '.tech_next_btn',               // Classic iSpring
+        '.ip-control-bar__btn_next',    // Modern iSpring
+        '.ism-player-btn-next',         // Mobile/Responsive Skin
+        'div[title="Next"]', 
+        'div[title="Dalej"]',
+        '.button-next',
+        '.next-button'
+    ];
+
+    const ACTION_DELAY = 2000; // Check every 2 seconds
+
     // --- CONTEXT CHECK ---
-    // Only run if we are inside an iframe (where the players live)
-    if (window.self === window.top) return;
+    if (window.self === window.top) return; // Exit if not in iframe
 
-    console.log("[UMP Universal] Iframe active. Scanning for ANY player type...");
+    console.log("[UMP iSpring] Active in Iframe. Hunting for controls...");
 
-    // --- HELPER: KEYBOARD NAVIGATION (iSpring Fallback) ---
-    function fireKeyboardNext() {
-        const eventArgs = {
-            key: 'ArrowRight', code: 'ArrowRight', keyCode: 39, which: 39,
-            bubbles: true, cancelable: true, view: window
+    // --- LOGIC ---
+
+    function triggerEvent(element, eventType) {
+        const event = new MouseEvent(eventType, {
+            view: window,
+            bubbles: true,
+            cancelable: true
+        });
+        element.dispatchEvent(event);
+    }
+
+    function clickElement(btn, label) {
+        if (!btn) return;
+        
+        console.log(`[UMP iSpring] Clicking ${label}...`);
+        
+        // 1. Visual Feedback
+        const originalBorder = btn.style.border;
+        btn.style.border = "5px solid #ff00ff"; // Magenta border for visibility
+
+        // 2. Click Sequence (Down -> Up -> Click)
+        // iSpring is picky about mouse events.
+        triggerEvent(btn, 'mouseover');
+        triggerEvent(btn, 'mousedown');
+        triggerEvent(btn, 'mouseup');
+        triggerEvent(btn, 'click');
+
+        // 3. Cleanup
+        setTimeout(() => {
+            btn.style.border = originalBorder;
+        }, 500);
+    }
+
+    function forceKeyboardNext() {
+        console.log("[UMP iSpring] Sending Keyboard 'Right Arrow'...");
+        
+        // 1. Force Focus (Crucial for keyboard events to register)
+        window.focus();
+        if (document.activeElement) {
+            document.activeElement.blur();
+        }
+        document.body.focus();
+
+        // 2. Dispatch Key Events
+        const keyData = {
+            key: 'ArrowRight', code: 'ArrowRight', 
+            keyCode: 39, which: 39, 
+            bubbles: true, cancelable: true, view: window 
         };
-        document.body.dispatchEvent(new KeyboardEvent('keydown', eventArgs));
-        document.body.dispatchEvent(new KeyboardEvent('keyup', eventArgs));
+
+        document.dispatchEvent(new KeyboardEvent('keydown', keyData));
+        document.dispatchEvent(new KeyboardEvent('keyup', keyData));
     }
 
-    // --- HELPER: MOUSE CLICK ---
-    function fireClick(element) {
-        const args = { bubbles: true, cancelable: true, view: window };
-        element.dispatchEvent(new MouseEvent('mousedown', args));
-        element.dispatchEvent(new MouseEvent('mouseup', args));
-        element.click();
-    }
+    // --- MAIN LOOP ---
+    setInterval(() => {
+        // STEP 1: Handle "Click to Start" overlays
+        for (let selector of START_OVERLAYS) {
+            const overlay = document.querySelector(selector);
+            // Check if visible
+            if (overlay && overlay.offsetParent !== null) { 
+                clickElement(overlay, "Start Overlay");
+                return; // Stop here, wait for next loop
+            }
+        }
 
-    // --- HELPER: AUTOPLAY FIXER ---
-    // Finds stuck videos, mutes them, and forces play
-    function forceMediaPlay() {
+        // STEP 2: Handle Muting (Required for playback)
         document.querySelectorAll('video, audio').forEach(media => {
-            if (!media.muted) media.muted = true; // Required by Chrome
+            if (!media.muted) media.muted = true;
             if (media.paused) media.play().catch(() => {});
         });
-    }
 
-    // --- MAIN ENGINE ---
-    let isCoolingDown = false;
-
-    setInterval(() => {
-        // 1. Always keep media playing
-        forceMediaPlay();
-
-        // 2. Don't spam clicks if we just clicked
-        if (isCoolingDown) return;
-
-        // 3. Scan for a valid button
-        let targetBtn = null;
-        for (let selector of TARGET_SELECTORS) {
-            const candidates = document.querySelectorAll(selector);
-            for (let btn of candidates) {
-                // Check if visible
-                const style = window.getComputedStyle(btn);
-                const isHidden = style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0';
-                
-                // Check if disabled class is present
-                const isDisabled = DISABLED_CLASSES.some(cls => btn.classList.contains(cls)) || 
-                                   btn.getAttribute('aria-disabled') === 'true';
-
-                if (!isHidden && !isDisabled) {
-                    targetBtn = btn;
-                    break; 
-                }
-            }
-            if (targetBtn) break;
-        }
-
-        // 4. EXECUTE
-        if (targetBtn) {
-            console.log("[UMP Universal] Button Found:", targetBtn);
-            
-            // Visual Feedback (Green Flash)
-            const originalBorder = targetBtn.style.border;
-            targetBtn.style.border = "4px solid #00ff00";
-
-            // Click it
-            fireClick(targetBtn);
-            
-            // Cooldown logic
-            isCoolingDown = true;
-            setTimeout(() => {
-                targetBtn.style.border = originalBorder;
-                isCoolingDown = false;
-            }, 2500); // Wait 2.5s before looking again (Articulate needs this)
-
-        } else {
-            // 5. No button found? It might be iSpring using Canvas.
-            // Try the keyboard shortcut blindly, but less frequently.
-            // We use a random check to run this roughly every 3-4 seconds
-            if (Math.random() > 0.7) { 
-                // console.log("[UMP Universal] No button visible. Trying Keyboard...");
-                fireKeyboardNext();
+        // STEP 3: Try clicking visual "Next" buttons
+        let buttonFound = false;
+        for (let selector of NEXT_BUTTONS) {
+            const btn = document.querySelector(selector);
+            // Check visibility and disabled state
+            if (btn && btn.offsetParent !== null && !btn.classList.contains('disabled') && !btn.classList.contains('state-disabled')) {
+                clickElement(btn, "Next Button");
+                buttonFound = true;
+                break;
             }
         }
 
-    }, 1000); // Check state every 1 second
+        // STEP 4: Fallback to Keyboard if no button found
+        if (!buttonFound) {
+            // Only try keyboard if we haven't found a button, 
+            // to avoid skipping slides too fast.
+            forceKeyboardNext();
+        }
+
+    }, ACTION_DELAY);
 
 })();
