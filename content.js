@@ -1,72 +1,82 @@
 (function() {
     'use strict';
 
-    const BUTTON_SELECTOR = '#next';
-    const CLICK_DELAY_MS = 500;
-    let hasClicked = false;
-
-    // Helper to identify which frame we are logging from
-    const contextName = window.self === window.top ? "[Top Frame]" : "[Iframe]";
-
-    function executeClick(btn) {
-        if (hasClicked) return;
-        
-        console.log(`${contextName} [Auto-Next] Target acquired. Clicking in ${CLICK_DELAY_MS}ms...`);
-        hasClicked = true;
-
-        setTimeout(() => {
-            btn.click();
-            console.log(`${contextName} [Auto-Next] CLICK COMMAND SENT.`);
-        }, CLICK_DELAY_MS);
+    // 1. CONFIGURATION
+    // The specific selector for Articulate Storyline 'Next' buttons
+    const BUTTON_SELECTOR = '#next'; 
+    // The class that marks the button as disabled
+    const DISABLED_CLASS = 'cs-disabled';
+    
+    // 2. CONTEXT CHECK
+    // We only want to run this inside the iframe where the player lives.
+    // We check if we are NOT in the top frame (meaning we are inside an iframe).
+    if (window.self === window.top) {
+        // We are on the main Moodle page. Do nothing here.
+        return;
     }
 
-    function checkButtonState(btn) {
-        // 1. Check for disabled class
-        const isCsDisabled = btn.classList.contains('cs-disabled');
-        
-        // 2. Check for aria-disabled (it might be "true", "false", or null/missing)
-        const ariaAttr = btn.getAttribute('aria-disabled');
-        const isAriaDisabled = ariaAttr === 'true';
+    console.log("[UMP Auto-Next] Iframe detected. Scanning for video player...");
 
-        // Debug logic to see what the script sees
-        // console.log(`${contextName} Checking: cs-disabled=${isCsDisabled}, aria-disabled=${ariaAttr}`);
+    let observer = null;
+    let clickTimer = null;
 
-        // IF NO 'cs-disabled' class AND 'aria-disabled' is NOT true -> CLICK
-        if (!isCsDisabled && !isAriaDisabled) {
-            executeClick(btn);
+    /**
+     * Clicks the button if it is enabled.
+     */
+    function tryClick(btn) {
+        const isDisabled = btn.classList.contains(DISABLED_CLASS) || btn.getAttribute('aria-disabled') === 'true';
+
+        if (!isDisabled) {
+            console.log("[UMP Auto-Next] Button is ENABLED. Clicking in 1 second...");
+            
+            // Debounce: Clear previous timer if it exists to avoid double clicks
+            if (clickTimer) clearTimeout(clickTimer);
+
+            clickTimer = setTimeout(() => {
+                console.log("[UMP Auto-Next] >> CLICK <<");
+                btn.click();
+            }, 1000); // 1 second delay to be safe
+        } else {
+            // console.log("[UMP Auto-Next] Button is still locked...");
         }
     }
 
-    function initObserver() {
-        const nextButton = document.querySelector(BUTTON_SELECTOR);
+    /**
+     * Sets up the MutationObserver to watch the button for changes.
+     */
+    function attachObserver(btn) {
+        if (observer) observer.disconnect();
 
-        if (!nextButton) {
-            // Silence the "not found" log if we are in the wrong frame 
-            // to avoid spamming the console from unrelated iframes.
-            return; 
-        }
+        console.log("[UMP Auto-Next] Target button found. Observer attached.");
+        
+        // Check immediately in case it loaded enabled
+        tryClick(btn);
 
-        console.log(`${contextName} [Auto-Next] Button found! Starting observer.`);
-
-        // Check immediately in case it loaded explicitly enabled
-        checkButtonState(nextButton);
-
-        const observer = new MutationObserver((mutations) => {
+        observer = new MutationObserver((mutations) => {
             mutations.forEach((mutation) => {
-                if (mutation.type === 'attributes') {
-                    checkButtonState(nextButton);
+                if (mutation.type === 'attributes' && (mutation.attributeName === 'class' || mutation.attributeName === 'aria-disabled')) {
+                    tryClick(btn);
                 }
             });
         });
 
-        observer.observe(nextButton, {
-            attributes: true,
-            attributeFilter: ['class', 'aria-disabled', 'style'] // Added style just in case display changes
+        observer.observe(btn, {
+            attributes: true
         });
     }
 
-    // Initialize
-    // We use a slight delay to allow the iframe content to paint
-    setTimeout(initObserver, 1500);
+    /**
+     * Initialization Loop
+     * Articulate players take a few seconds to load React/Angular content.
+     * We poll every 1 second until we find the button.
+     */
+    const initInterval = setInterval(() => {
+        const btn = document.querySelector(BUTTON_SELECTOR);
+        
+        if (btn) {
+            clearInterval(initInterval);
+            attachObserver(btn);
+        }
+    }, 1000);
 
 })();
