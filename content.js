@@ -1,41 +1,50 @@
 (function() {
     'use strict';
 
-    // --- CONFIGURATION ---
-    // We target the DIV container because that's where the classes change
+    // --- PART 1: THE NUCLEAR AUTOPLAY BYPASS ---
+    // This overrides the browser's native play() function.
+    // It forces EVERY video/audio to mute itself before playing.
+    const originalPlay = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function() {
+        this.muted = true; // FORCE MUTE
+        this.volume = 0;   // FORCE SILENCE
+        return originalPlay.apply(this, arguments);
+    };
+
+    console.log("[UMP Nuclear] Video player override active. Autoplay enabled.");
+
+    // --- PART 2: CONFIGURATION ---
     const CONTAINER_SELECTOR = '.component_container.next'; 
     const LOCKED_CLASS = 'disabled';
-    
-    // Check every 1 second
     const POLLING_INTERVAL = 1000; 
 
-    // --- CONTEXT CHECK ---
+    // --- PART 3: CONTEXT CHECK ---
     if (window.self === window.top) return;
 
-    console.log("[UMP Final] Iframe active. Targeting Container...");
+    console.log("[UMP Nuclear] Iframe active. Hunting for Next Container...");
 
-    // --- HELPER: CLICK SEQUENCE ---
+    // --- HELPER: SIMULATE INTERACTION ---
+    // Mimics a human moving the mouse over the button and clicking
     function simulateInteraction(element) {
-        // 1. Hover first (Crucial based on your finding)
-        element.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, view: window }));
-        element.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true, view: window }));
+        const events = [
+            new MouseEvent('mouseover', { bubbles: true, view: window }),
+            new MouseEvent('mouseenter', { bubbles: true, view: window }),
+            new MouseEvent('mousedown', { bubbles: true, view: window }),
+            new MouseEvent('mouseup', { bubbles: true, view: window }),
+            new MouseEvent('click', { bubbles: true, view: window })
+        ];
         
-        // 2. The Click Sequence
-        const clickEvents = ['mousedown', 'mouseup', 'click'];
-        clickEvents.forEach(type => {
-            element.dispatchEvent(new MouseEvent(type, {
-                bubbles: true,
-                cancelable: true,
-                view: window
-            }));
-        });
+        events.forEach(evt => element.dispatchEvent(evt));
     }
 
-    // --- HELPER: AUTOPLAY FIX ---
-    function keepMediaPlaying() {
+    // --- HELPER: ENSURE PROGRESS ---
+    // Sometimes the player pauses even after our override. This kicks it.
+    function kickstartMedia() {
         document.querySelectorAll('video, audio').forEach(media => {
-            if (!media.muted) media.muted = true;
-            if (media.paused) media.play().catch(() => {}); 
+            if (media.paused && media.readyState > 2) {
+                // console.log("[UMP Nuclear] Kicking stuck video...");
+                media.play().catch(e => {}); // Ignore errors, our override handles most
+            }
         });
     }
 
@@ -43,37 +52,37 @@
     let isCoolingDown = false;
 
     setInterval(() => {
-        keepMediaPlaying();
+        // 1. Keep videos moving
+        kickstartMedia();
 
         if (isCoolingDown) return;
 
+        // 2. Find the target container
         const container = document.querySelector(CONTAINER_SELECTOR);
 
         if (container) {
-            // Logic: Click if the 'disabled' class is MISSING
+            // 3. Check Lock State
             const isLocked = container.classList.contains(LOCKED_CLASS);
-            
-            // Safety: Ensure it's actually visible on screen
             const isVisible = container.offsetParent !== null;
 
             if (!isLocked && isVisible) {
-                console.log("[UMP Final] Target Unlocked. Engaging...");
+                console.log("[UMP Nuclear] Target Unlocked! Engaging...");
 
-                // Visual Feedback: Hot Pink Border on the Container
+                // Visual Feedback: Hot Pink Border
                 const oldBorder = container.style.border;
-                container.style.border = "4px solid #ff00ff"; 
+                container.style.border = "5px solid #ff00ff"; 
 
-                // Execute Click on the CONTAINER (the div)
+                // 4. EXECUTE: Hover & Click the CONTAINER
                 simulateInteraction(container);
 
-                // Also try clicking the button inside, just in case
+                // 5. EXECUTE: Hover & Click the BUTTON (just in case)
                 const childBtn = container.querySelector('button');
-                if(childBtn) simulateInteraction(childBtn);
+                if (childBtn) simulateInteraction(childBtn);
 
-                // Cooldown
+                // Cooldown: Stop clicking for 3 seconds to let the next slide load
                 isCoolingDown = true;
                 setTimeout(() => {
-                    container.style.border = oldBorder;
+                    if(container) container.style.border = oldBorder;
                     isCoolingDown = false;
                 }, 3000); 
             }
