@@ -2,7 +2,7 @@
 Zvibecodowana wtyczka do przeglądarki do automatyzacji przycisku 'Dalej' w odtwarzaczu na portalu lms.ump.edu.pl
 
 
-## 3. Instrukcja instalacji
+## Instrukcja instalacji
 
 * **Zapisz pliki:** Upewnij się, że oba pliki są zapisane w Twoim folderze.
 * **Otwórz Rozszerzenia Chrome:** Wpisz `chrome://extensions/` w pasku adresu przeglądarki i naciśnij Enter.
