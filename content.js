@@ -2,125 +2,83 @@
     'use strict';
 
     // --- CONFIGURATION ---
+    // Targeted specifically at the HTML structure from your screenshot
+    const CONTAINER_SELECTOR = '.component_container.next'; 
+    const BUTTON_SELECTOR = '.component_base.next';
     
-    // 1. The Big "Start" Overlay (Must click this first if present)
-    const START_OVERLAYS = [
-        '.play-button', 
-        '.start-button',
-        '.big-play-btn',
-        '#sys-start-btn',
-        '.click-to-start'
-    ];
-
-    // 2. The "Next" Navigation Buttons (iSpring specific)
-    const NEXT_BUTTONS = [
-        '.tech_next_btn',               // Classic iSpring
-        '.ip-control-bar__btn_next',    // Modern iSpring
-        '.ism-player-btn-next',         // Mobile/Responsive Skin
-        'div[title="Next"]', 
-        'div[title="Dalej"]',
-        '.button-next',
-        '.next-button'
-    ];
-
-    const ACTION_DELAY = 2000; // Check every 2 seconds
+    // The class Moodle/iSpring adds when the button is locked
+    const DISABLED_CLASS = 'disabled';
+    
+    // Check every 1 second
+    const POLLING_INTERVAL = 1000; 
 
     // --- CONTEXT CHECK ---
-    if (window.self === window.top) return; // Exit if not in iframe
+    // Only run inside the iframe
+    if (window.self === window.top) return;
 
-    console.log("[UMP iSpring] Active in Iframe. Hunting for controls...");
+    console.log("[UMP Final] Iframe active. Hunting for .component_container.next ...");
 
-    // --- LOGIC ---
-
-    function triggerEvent(element, eventType) {
-        const event = new MouseEvent(eventType, {
-            view: window,
-            bubbles: true,
-            cancelable: true
+    // --- HELPER: CLICKER ---
+    function triggerClick(element) {
+        // Create a full set of events to fool the player
+        ['mouseover', 'mousedown', 'mouseup', 'click'].forEach(eventType => {
+            const event = new MouseEvent(eventType, {
+                bubbles: true,
+                cancelable: true,
+                view: window
+            });
+            element.dispatchEvent(event);
         });
-        element.dispatchEvent(event);
     }
 
-    function clickElement(btn, label) {
-        if (!btn) return;
-        
-        console.log(`[UMP iSpring] Clicking ${label}...`);
-        
-        // 1. Visual Feedback
-        const originalBorder = btn.style.border;
-        btn.style.border = "5px solid #ff00ff"; // Magenta border for visibility
-
-        // 2. Click Sequence (Down -> Up -> Click)
-        // iSpring is picky about mouse events.
-        triggerEvent(btn, 'mouseover');
-        triggerEvent(btn, 'mousedown');
-        triggerEvent(btn, 'mouseup');
-        triggerEvent(btn, 'click');
-
-        // 3. Cleanup
-        setTimeout(() => {
-            btn.style.border = originalBorder;
-        }, 500);
+    // --- HELPER: AUTOPLAY FIX ---
+    // Keeps the video moving so the "Next" button eventually unlocks
+    function keepMediaPlaying() {
+        const mediaElements = document.querySelectorAll('video, audio');
+        mediaElements.forEach(media => {
+            if (!media.muted) media.muted = true; // Essential for Chrome autoplay
+            if (media.paused) media.play().catch(() => {}); 
+        });
     }
 
-    function forceKeyboardNext() {
-        console.log("[UMP iSpring] Sending Keyboard 'Right Arrow'...");
-        
-        // 1. Force Focus (Crucial for keyboard events to register)
-        window.focus();
-        if (document.activeElement) {
-            document.activeElement.blur();
-        }
-        document.body.focus();
+    // --- MAIN ENGINE ---
+    let isCoolingDown = false;
 
-        // 2. Dispatch Key Events
-        const keyData = {
-            key: 'ArrowRight', code: 'ArrowRight', 
-            keyCode: 39, which: 39, 
-            bubbles: true, cancelable: true, view: window 
-        };
-
-        document.dispatchEvent(new KeyboardEvent('keydown', keyData));
-        document.dispatchEvent(new KeyboardEvent('keyup', keyData));
-    }
-
-    // --- MAIN LOOP ---
     setInterval(() => {
-        // STEP 1: Handle "Click to Start" overlays
-        for (let selector of START_OVERLAYS) {
-            const overlay = document.querySelector(selector);
-            // Check if visible
-            if (overlay && overlay.offsetParent !== null) { 
-                clickElement(overlay, "Start Overlay");
-                return; // Stop here, wait for next loop
+        // 1. Keep video alive
+        keepMediaPlaying();
+
+        if (isCoolingDown) return;
+
+        // 2. Find the container (parent) and the button (child)
+        const container = document.querySelector(CONTAINER_SELECTOR);
+        const button = document.querySelector(BUTTON_SELECTOR);
+
+        if (container && button) {
+            
+            // 3. Check if locked
+            // Based on your screenshot, the class 'disabled' is on the PARENT container
+            const isLocked = container.classList.contains(DISABLED_CLASS);
+            const isHidden = container.offsetParent === null; // standard visibility check
+
+            if (!isLocked && !isHidden) {
+                console.log("[UMP Final] Button UNLOCKED. Clicking...");
+
+                // Visual Feedback
+                const oldBorder = container.style.border;
+                container.style.border = "4px solid #00ff00"; // Green Box
+
+                // Click!
+                triggerClick(button);
+
+                // Cooldown to prevent double-clicking while slide loads
+                isCoolingDown = true;
+                setTimeout(() => {
+                    container.style.border = oldBorder;
+                    isCoolingDown = false;
+                }, 3000); // 3 second pause
             }
-        }
-
-        // STEP 2: Handle Muting (Required for playback)
-        document.querySelectorAll('video, audio').forEach(media => {
-            if (!media.muted) media.muted = true;
-            if (media.paused) media.play().catch(() => {});
-        });
-
-        // STEP 3: Try clicking visual "Next" buttons
-        let buttonFound = false;
-        for (let selector of NEXT_BUTTONS) {
-            const btn = document.querySelector(selector);
-            // Check visibility and disabled state
-            if (btn && btn.offsetParent !== null && !btn.classList.contains('disabled') && !btn.classList.contains('state-disabled')) {
-                clickElement(btn, "Next Button");
-                buttonFound = true;
-                break;
-            }
-        }
-
-        // STEP 4: Fallback to Keyboard if no button found
-        if (!buttonFound) {
-            // Only try keyboard if we haven't found a button, 
-            // to avoid skipping slides too fast.
-            forceKeyboardNext();
-        }
-
-    }, ACTION_DELAY);
+        } 
+    }, POLLING_INTERVAL);
 
 })();
