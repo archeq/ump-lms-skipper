@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Moodle Auto-Next Clicker",
+  "version": "1.0",
+  "description": "Automatically clicks the Next button when it becomes enabled using MutationObserver.",
+  "permissions": [
+    "scripting"
+  ],
+  "host_permissions": [
+    "*://moodle.your-university.edu/*",
+    "*://*.moodle.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "*://lms.ump.edu.pl/*",
+        "*://*.moodle.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ]
+}
