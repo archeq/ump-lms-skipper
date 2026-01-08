@@ -3,61 +3,54 @@
 
     const BUTTON_SELECTOR = '#next';
     const CLICK_DELAY_MS = 500;
-    let hasClicked = false; // Guard flag to prevent multiple clicks
+    let hasClicked = false;
 
-    /**
-     * Actually performs the click action.
-     * @param {HTMLElement} btn 
-     */
+    // Helper to identify which frame we are logging from
+    const contextName = window.self === window.top ? "[Top Frame]" : "[Iframe]";
+
     function executeClick(btn) {
         if (hasClicked) return;
         
-        console.log("[Auto-Next] Button enabled. clicking in", CLICK_DELAY_MS, "ms...");
+        console.log(`${contextName} [Auto-Next] Target acquired. Clicking in ${CLICK_DELAY_MS}ms...`);
         hasClicked = true;
 
         setTimeout(() => {
-            console.log("[Auto-Next] Clicking now.");
             btn.click();
+            console.log(`${contextName} [Auto-Next] CLICK COMMAND SENT.`);
         }, CLICK_DELAY_MS);
     }
 
-    /**
-     * Checks the button's attributes against the logic criteria.
-     * Logic: IF class 'cs-disabled' is removed AND aria-disabled != 'true'
-     * @param {HTMLElement} btn 
-     */
     function checkButtonState(btn) {
+        // 1. Check for disabled class
         const isCsDisabled = btn.classList.contains('cs-disabled');
-        const isAriaDisabled = btn.getAttribute('aria-disabled') === 'true';
+        
+        // 2. Check for aria-disabled (it might be "true", "false", or null/missing)
+        const ariaAttr = btn.getAttribute('aria-disabled');
+        const isAriaDisabled = ariaAttr === 'true';
 
-        // Debugging log (optional, remove in production)
-        // console.log(`[Auto-Next] State Check -> cs-disabled: ${isCsDisabled}, aria-disabled: ${isAriaDisabled}`);
+        // Debug logic to see what the script sees
+        // console.log(`${contextName} Checking: cs-disabled=${isCsDisabled}, aria-disabled=${ariaAttr}`);
 
+        // IF NO 'cs-disabled' class AND 'aria-disabled' is NOT true -> CLICK
         if (!isCsDisabled && !isAriaDisabled) {
             executeClick(btn);
         }
     }
 
-    /**
-     * Main entry point. Finds the button and attaches the observer.
-     */
     function initObserver() {
         const nextButton = document.querySelector(BUTTON_SELECTOR);
 
-        // 1. Safety check: Does the button exist yet?
         if (!nextButton) {
-            console.log("[Auto-Next] Button #next not found yet. Retrying in 1s...");
-            // Simple polling fallback if the UI is slow to render
-            setTimeout(initObserver, 1000); 
-            return;
+            // Silence the "not found" log if we are in the wrong frame 
+            // to avoid spamming the console from unrelated iframes.
+            return; 
         }
 
-        console.log("[Auto-Next] Button found. Observer starting.");
+        console.log(`${contextName} [Auto-Next] Button found! Starting observer.`);
 
-        // 2. Initial check: Is it already enabled? (e.g. page reload)
+        // Check immediately in case it loaded explicitly enabled
         checkButtonState(nextButton);
 
-        // 3. Setup MutationObserver
         const observer = new MutationObserver((mutations) => {
             mutations.forEach((mutation) => {
                 if (mutation.type === 'attributes') {
@@ -66,14 +59,14 @@
             });
         });
 
-        // 4. Start observing specific attributes
         observer.observe(nextButton, {
             attributes: true,
-            attributeFilter: ['class', 'aria-disabled'] 
+            attributeFilter: ['class', 'aria-disabled', 'style'] // Added style just in case display changes
         });
     }
 
-    // Start the script
-    initObserver();
+    // Initialize
+    // We use a slight delay to allow the iframe content to paint
+    setTimeout(initObserver, 1500);
 
 })();
