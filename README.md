@@ -4,6 +4,7 @@ Zvibecodowana wtyczka do przeglądarki do automatyzacji przycisku 'Dalej' w odtw
 
 ## Instrukcja instalacji
 
+* **Stwórz folder:** Zrób sb jakiś folder i schowaj go gdzieś daleko (np. w dokumentach).
 * **Zapisz pliki:** Upewnij się, że oba pliki są zapisane w Twoim folderze.
 * **Otwórz Rozszerzenia Chrome:** Wpisz `chrome://extensions/` w pasku adresu przeglądarki i naciśnij Enter.
 * **Włącz Tryb programisty:** Przełącz suwak w prawym górnym rogu ekranu.
