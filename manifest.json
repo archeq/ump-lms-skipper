@@ -1,15 +1,17 @@
 {
   "manifest_version": 3,
-  "name": "Moodle Auto-Next Clicker",
-  "version": "1.1",
-  "description": "Automatically clicks the Next button when it becomes enabled using MutationObserver.",
-  "permissions": [
-    "scripting"
+  "name": "UMP Moodle Auto-Next",
+  "version": "2.0",
+  "description": "Automates the Next button in Articulate players on lms.ump.edu.pl",
+  "permissions": ["scripting"],
+  "host_permissions": [
+    "*://lms.ump.edu.pl/*"
   ],
-  "host_permissions": ["<all_urls>"],
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": [
+        "*://lms.ump.edu.pl/*"
+      ],
       "js": ["content.js"],
       "run_at": "document_end",
       "all_frames": true
