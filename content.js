@@ -2,41 +2,39 @@
     'use strict';
 
     // --- CONFIGURATION ---
-    // Targeted specifically at the HTML structure from your screenshot
+    // We target the DIV container because that's where the classes change
     const CONTAINER_SELECTOR = '.component_container.next'; 
-    const BUTTON_SELECTOR = '.component_base.next';
-    
-    // The class Moodle/iSpring adds when the button is locked
-    const DISABLED_CLASS = 'disabled';
+    const LOCKED_CLASS = 'disabled';
     
     // Check every 1 second
     const POLLING_INTERVAL = 1000; 
 
     // --- CONTEXT CHECK ---
-    // Only run inside the iframe
     if (window.self === window.top) return;
 
-    console.log("[UMP Final] Iframe active. Hunting for .component_container.next ...");
+    console.log("[UMP Final] Iframe active. Targeting Container...");
 
-    // --- HELPER: CLICKER ---
-    function triggerClick(element) {
-        // Create a full set of events to fool the player
-        ['mouseover', 'mousedown', 'mouseup', 'click'].forEach(eventType => {
-            const event = new MouseEvent(eventType, {
+    // --- HELPER: CLICK SEQUENCE ---
+    function simulateInteraction(element) {
+        // 1. Hover first (Crucial based on your finding)
+        element.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, view: window }));
+        element.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true, view: window }));
+        
+        // 2. The Click Sequence
+        const clickEvents = ['mousedown', 'mouseup', 'click'];
+        clickEvents.forEach(type => {
+            element.dispatchEvent(new MouseEvent(type, {
                 bubbles: true,
                 cancelable: true,
                 view: window
-            });
-            element.dispatchEvent(event);
+            }));
         });
     }
 
     // --- HELPER: AUTOPLAY FIX ---
-    // Keeps the video moving so the "Next" button eventually unlocks
     function keepMediaPlaying() {
-        const mediaElements = document.querySelectorAll('video, audio');
-        mediaElements.forEach(media => {
-            if (!media.muted) media.muted = true; // Essential for Chrome autoplay
+        document.querySelectorAll('video, audio').forEach(media => {
+            if (!media.muted) media.muted = true;
             if (media.paused) media.play().catch(() => {}); 
         });
     }
@@ -45,38 +43,39 @@
     let isCoolingDown = false;
 
     setInterval(() => {
-        // 1. Keep video alive
         keepMediaPlaying();
 
         if (isCoolingDown) return;
 
-        // 2. Find the container (parent) and the button (child)
         const container = document.querySelector(CONTAINER_SELECTOR);
-        const button = document.querySelector(BUTTON_SELECTOR);
 
-        if (container && button) {
+        if (container) {
+            // Logic: Click if the 'disabled' class is MISSING
+            const isLocked = container.classList.contains(LOCKED_CLASS);
             
-            // 3. Check if locked
-            // Based on your screenshot, the class 'disabled' is on the PARENT container
-            const isLocked = container.classList.contains(DISABLED_CLASS);
-            const isHidden = container.offsetParent === null; // standard visibility check
+            // Safety: Ensure it's actually visible on screen
+            const isVisible = container.offsetParent !== null;
 
-            if (!isLocked && !isHidden) {
-                console.log("[UMP Final] Button UNLOCKED. Clicking...");
+            if (!isLocked && isVisible) {
+                console.log("[UMP Final] Target Unlocked. Engaging...");
 
-                // Visual Feedback
+                // Visual Feedback: Hot Pink Border on the Container
                 const oldBorder = container.style.border;
-                container.style.border = "4px solid #00ff00"; // Green Box
+                container.style.border = "4px solid #ff00ff"; 
 
-                // Click!
-                triggerClick(button);
+                // Execute Click on the CONTAINER (the div)
+                simulateInteraction(container);
 
-                // Cooldown to prevent double-clicking while slide loads
+                // Also try clicking the button inside, just in case
+                const childBtn = container.querySelector('button');
+                if(childBtn) simulateInteraction(childBtn);
+
+                // Cooldown
                 isCoolingDown = true;
                 setTimeout(() => {
                     container.style.border = oldBorder;
                     isCoolingDown = false;
-                }, 3000); // 3 second pause
+                }, 3000); 
             }
         } 
     }, POLLING_INTERVAL);
