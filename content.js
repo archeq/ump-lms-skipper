@@ -1,137 +1,118 @@
 (function() {
     'use strict';
 
-    // --- CONFIGURATION ---
-    // We scan for ALL these potential selectors. 
-    // This covers Articulate Storyline, Rise, Captivate, and Polish labels.
-    const POTENTIAL_SELECTORS = [
-        '#next',                          // Standard Articulate
-        '#linkNext',                      // Older Articulate / Captivate
-        'div.next-button',                // Generic
-        'button[aria-label="Next"]',      // Accessibility English
-        'button[aria-label="Dalej"]',     // Accessibility Polish
-        'button[title="Next"]',           // Title attribute English
-        'button[title="Dalej"]',          // Title attribute Polish
-        '.cs-next',                       // Class-based
-        '#mobile-next-button'             // Mobile views
+    // --- 1. UNIVERSAL SELECTOR LIST ---
+    // Combined list for Articulate, iSpring, Captivate, and Polish Moodle
+    const TARGET_SELECTORS = [
+        // Articulate / Storyline (First Player)
+        '#next', 
+        '#linkNext',
+        'button[aria-label="Next"]',
+        'button[aria-label="Dalej"]',
+        
+        // iSpring (Second Player)
+        '.next-button',
+        '.tech_next_btn',
+        'div[title="Next"]',
+        'div[title="Dalej"]',
+        '.player_navbar_right_control',
+        '.ispring-button-next'
     ];
 
-    const DISABLED_CLASSES = ['cs-disabled', 'disabled', 'btn-disabled'];
-    const CLICK_DELAY_MS = 2500; // Delay to prevent crashing the player
-
+    const DISABLED_CLASSES = ['cs-disabled', 'disabled', 'blocked', 'hidden', 'state-disabled'];
+    
     // --- CONTEXT CHECK ---
-    if (window.self === window.top) {
-        // We are on the main Moodle page. 
-        // We do NOT want to run here, we want to run inside the iframe.
-        return; 
+    // Only run if we are inside an iframe (where the players live)
+    if (window.self === window.top) return;
+
+    console.log("[UMP Universal] Iframe active. Scanning for ANY player type...");
+
+    // --- HELPER: KEYBOARD NAVIGATION (iSpring Fallback) ---
+    function fireKeyboardNext() {
+        const eventArgs = {
+            key: 'ArrowRight', code: 'ArrowRight', keyCode: 39, which: 39,
+            bubbles: true, cancelable: true, view: window
+        };
+        document.body.dispatchEvent(new KeyboardEvent('keydown', eventArgs));
+        document.body.dispatchEvent(new KeyboardEvent('keyup', eventArgs));
     }
 
-    console.log("[UMP Auto-Next] Iframe active. Scanning for navigation controls...");
-
-    let observer = null;
-    let clickTimer = null;
-    let targetButton = null;
-
-    /**
-     * Helper: Simulates a human click (MouseDown -> MouseUp -> Click)
-     */
-    function triggerHumanClick(element) {
-        const eventOptions = { bubbles: true, cancelable: true, view: window };
-        element.dispatchEvent(new MouseEvent('mousedown', eventOptions));
-        element.dispatchEvent(new MouseEvent('mouseup', eventOptions));
-        element.click(); 
+    // --- HELPER: MOUSE CLICK ---
+    function fireClick(element) {
+        const args = { bubbles: true, cancelable: true, view: window };
+        element.dispatchEvent(new MouseEvent('mousedown', args));
+        element.dispatchEvent(new MouseEvent('mouseup', args));
+        element.click();
     }
 
-    /**
-     * Logic: Check if the button is ready to be clicked
-     */
-    function tryClick(btn) {
-        // 1. Check classes
-        const hasDisabledClass = DISABLED_CLASSES.some(cls => btn.classList.contains(cls));
-        
-        // 2. Check accessibility (aria-disabled="true")
-        const ariaDisabled = btn.getAttribute('aria-disabled') === 'true';
+    // --- HELPER: AUTOPLAY FIXER ---
+    // Finds stuck videos, mutes them, and forces play
+    function forceMediaPlay() {
+        document.querySelectorAll('video, audio').forEach(media => {
+            if (!media.muted) media.muted = true; // Required by Chrome
+            if (media.paused) media.play().catch(() => {});
+        });
+    }
 
-        // 3. Check visibility
-        const style = window.getComputedStyle(btn);
-        const isHidden = style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0';
+    // --- MAIN ENGINE ---
+    let isCoolingDown = false;
 
-        if (!hasDisabledClass && !ariaDisabled && !isHidden) {
+    setInterval(() => {
+        // 1. Always keep media playing
+        forceMediaPlay();
+
+        // 2. Don't spam clicks if we just clicked
+        if (isCoolingDown) return;
+
+        // 3. Scan for a valid button
+        let targetBtn = null;
+        for (let selector of TARGET_SELECTORS) {
+            const candidates = document.querySelectorAll(selector);
+            for (let btn of candidates) {
+                // Check if visible
+                const style = window.getComputedStyle(btn);
+                const isHidden = style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0';
+                
+                // Check if disabled class is present
+                const isDisabled = DISABLED_CLASSES.some(cls => btn.classList.contains(cls)) || 
+                                   btn.getAttribute('aria-disabled') === 'true';
+
+                if (!isHidden && !isDisabled) {
+                    targetBtn = btn;
+                    break; 
+                }
+            }
+            if (targetBtn) break;
+        }
+
+        // 4. EXECUTE
+        if (targetBtn) {
+            console.log("[UMP Universal] Button Found:", targetBtn);
             
-            // Debounce
-            if (clickTimer) clearTimeout(clickTimer);
+            // Visual Feedback (Green Flash)
+            const originalBorder = targetBtn.style.border;
+            targetBtn.style.border = "4px solid #00ff00";
 
-            console.log(`[UMP Auto-Next] Button enabled. Waiting ${CLICK_DELAY_MS}ms...`);
-
-            // Visual feedback: Turn the button Green so you know the script found it
-            btn.style.border = "3px solid #00ff00"; 
-
-            clickTimer = setTimeout(() => {
-                console.log("[UMP Auto-Next] >> EXECUTING CLICK <<");
-                triggerHumanClick(btn);
-                btn.style.border = ""; // Reset border
-            }, CLICK_DELAY_MS);
+            // Click it
+            fireClick(targetBtn);
             
+            // Cooldown logic
+            isCoolingDown = true;
+            setTimeout(() => {
+                targetBtn.style.border = originalBorder;
+                isCoolingDown = false;
+            }, 2500); // Wait 2.5s before looking again (Articulate needs this)
+
         } else {
-            // Button is disabled/hidden
-            if (clickTimer) {
-                clearTimeout(clickTimer);
-                clickTimer = null;
-            }
-            // Visual feedback: Turn the button Red so you know the script sees it but knows it's locked
-            // btn.style.border = "2px solid red"; 
-        }
-    }
-
-    /**
-     * Attach MutationObserver to the found button
-     */
-    function attachObserver(btn) {
-        if (observer) observer.disconnect();
-        
-        targetButton = btn;
-        console.log("[UMP Auto-Next] LOCKED ON TARGET:", btn);
-        
-        // Visual indicator that we found the button
-        btn.style.boxShadow = "0 0 10px #00ff00"; 
-
-        // Initial check
-        tryClick(btn);
-
-        observer = new MutationObserver((mutations) => {
-            tryClick(btn);
-        });
-
-        observer.observe(btn, {
-            attributes: true,
-            attributeFilter: ['class', 'aria-disabled', 'style', 'disabled']
-        });
-    }
-
-    /**
-     * Scanner: Runs repeatedly to find ANY matching button from our list
-     */
-    const initInterval = setInterval(() => {
-        // Stop scanning if we already attached the observer to a valid button
-        if (targetButton && document.contains(targetButton)) return;
-
-        let foundBtn = null;
-
-        // Loop through our list of selectors
-        for (let selector of POTENTIAL_SELECTORS) {
-            const candidate = document.querySelector(selector);
-            if (candidate) {
-                foundBtn = candidate;
-                console.log(`[UMP Auto-Next] Match found using selector: ${selector}`);
-                break; // Stop looking, we found one
+            // 5. No button found? It might be iSpring using Canvas.
+            // Try the keyboard shortcut blindly, but less frequently.
+            // We use a random check to run this roughly every 3-4 seconds
+            if (Math.random() > 0.7) { 
+                // console.log("[UMP Universal] No button visible. Trying Keyboard...");
+                fireKeyboardNext();
             }
         }
 
-        if (foundBtn) {
-            // Found it! Stop the interval and attach logic.
-            clearInterval(initInterval);
-            attachObserver(foundBtn);
-        }
-    }, 1000); // Scan every second
+    }, 1000); // Check state every 1 second
 
 })();
