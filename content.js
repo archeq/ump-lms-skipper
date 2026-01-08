@@ -2,77 +2,101 @@
     'use strict';
 
     // 1. CONFIGURATION
-    // The specific selector for Articulate Storyline 'Next' buttons
     const BUTTON_SELECTOR = '#next'; 
-    // The class that marks the button as disabled
     const DISABLED_CLASS = 'cs-disabled';
-    
+    // Increased safety delay to prevent crashing the player
+    const CLICK_DELAY_MS = 2500; 
+
     // 2. CONTEXT CHECK
-    // We only want to run this inside the iframe where the player lives.
-    // We check if we are NOT in the top frame (meaning we are inside an iframe).
     if (window.self === window.top) {
-        // We are on the main Moodle page. Do nothing here.
-        return;
+        return; // Exit if we are on the main Moodle page
     }
 
-    console.log("[UMP Auto-Next] Iframe detected. Scanning for video player...");
+    console.log("[UMP Auto-Next] Iframe detected. Initializing...");
 
     let observer = null;
     let clickTimer = null;
 
     /**
-     * Clicks the button if it is enabled.
+     * Simulates a real human mouse click sequence.
+     * This is safer than .click() for complex apps like Articulate.
+     */
+    function triggerHumanClick(element) {
+        const eventOptions = {
+            bubbles: true,
+            cancelable: true,
+            view: window
+        };
+
+        // Dispatch sequence: MouseDown -> MouseUp -> Click
+        element.dispatchEvent(new MouseEvent('mousedown', eventOptions));
+        element.dispatchEvent(new MouseEvent('mouseup', eventOptions));
+        element.click(); 
+    }
+
+    /**
+     * Logic to decide if we should click.
      */
     function tryClick(btn) {
-        const isDisabled = btn.classList.contains(DISABLED_CLASS) || btn.getAttribute('aria-disabled') === 'true';
+        // 1. Check if visually disabled
+        const hasDisabledClass = btn.classList.contains(DISABLED_CLASS);
+        
+        // 2. Check accessibility attribute (sometimes it's "true", sometimes missing)
+        const ariaDisabled = btn.getAttribute('aria-disabled') === 'true';
 
-        if (!isDisabled) {
-            console.log("[UMP Auto-Next] Button is ENABLED. Clicking in 1 second...");
+        // 3. Check if actually visible (prevent clicking hidden buttons)
+        const style = window.getComputedStyle(btn);
+        const isHidden = style.display === 'none' || style.visibility === 'hidden';
+
+        if (!hasDisabledClass && !ariaDisabled && !isHidden) {
             
-            // Debounce: Clear previous timer if it exists to avoid double clicks
+            // Debounce: Reset timer if this function is called repeatedly
             if (clickTimer) clearTimeout(clickTimer);
 
+            console.log(`[UMP Auto-Next] Button enabled. Waiting ${CLICK_DELAY_MS}ms for player to settle...`);
+
             clickTimer = setTimeout(() => {
-                console.log("[UMP Auto-Next] >> CLICK <<");
-                btn.click();
-            }, 1000); // 1 second delay to be safe
+                console.log("[UMP Auto-Next] >> EXECUTING CLICK <<");
+                triggerHumanClick(btn);
+            }, CLICK_DELAY_MS);
+            
         } else {
-            // console.log("[UMP Auto-Next] Button is still locked...");
+            // Button is disabled or hidden, cancel any pending clicks
+            if (clickTimer) {
+                clearTimeout(clickTimer);
+                clickTimer = null;
+                // console.log("[UMP Auto-Next] Button disabled/hidden. Click cancelled.");
+            }
         }
     }
 
     /**
-     * Sets up the MutationObserver to watch the button for changes.
+     * Attach the observer to watch for state changes.
      */
     function attachObserver(btn) {
         if (observer) observer.disconnect();
+        console.log("[UMP Auto-Next] Observer attached to #next button.");
 
-        console.log("[UMP Auto-Next] Target button found. Observer attached.");
-        
-        // Check immediately in case it loaded enabled
+        // Initial check
         tryClick(btn);
 
         observer = new MutationObserver((mutations) => {
-            mutations.forEach((mutation) => {
-                if (mutation.type === 'attributes' && (mutation.attributeName === 'class' || mutation.attributeName === 'aria-disabled')) {
-                    tryClick(btn);
-                }
-            });
+            // We only care about class or aria changes
+            // We verify the state regardless of which specific attribute changed
+            tryClick(btn);
         });
 
         observer.observe(btn, {
-            attributes: true
+            attributes: true,
+            attributeFilter: ['class', 'aria-disabled', 'style']
         });
     }
 
     /**
-     * Initialization Loop
-     * Articulate players take a few seconds to load React/Angular content.
-     * We poll every 1 second until we find the button.
+     * Init Loop: Scans for the button every 1 second until found.
      */
     const initInterval = setInterval(() => {
         const btn = document.querySelector(BUTTON_SELECTOR);
-        
         if (btn) {
             clearInterval(initInterval);
             attachObserver(btn);
