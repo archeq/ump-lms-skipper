@@ -24,19 +24,37 @@
     console.log('[UMP] Script loaded and running');
 
     // =================================================================
-    // HELPER: ENSURE VIDEO PLAYS (Exact copy from old.js)
+    // HELPER: ENSURE VIDEO PLAYS (Improved with visibility check for audio chaos)
     // =================================================================
 
     function ensureMediaPlaying() {
         const mediaElements = document.querySelectorAll('video, audio');
         mediaElements.forEach(media => {
-            // 1. Unmute for sound (changed from old.js)
+            // 0. VISIBILITY & RELEVANCE CHECK (Fixes "All audio playing at once")
+            // We only want to play media that is visibly part of the current slide
+            // or at least not explicitly hidden.
+            if (media.offsetParent === null && media.tagName !== 'AUDIO') {
+                // Video hidden? Skip.
+                return;
+            }
+
+            // For audio/video on iSpring/iframe, sometimes many exist but only one is active.
+            // Often active ones have specific classes or are within the active slide container.
+            // A simple heuristic: check if it has height/width OR if it's an audio tag without controls (background).
+            // Better check: If it's paused and we want to play it, make sure it's not "display:none" in styles.
+            const style = window.getComputedStyle(media);
+            if (style.display === 'none' || style.visibility === 'hidden') {
+                return;
+            }
+
+            // 1. Unmute for sound (try to enable sound)
             if (media.muted) media.muted = false;
 
             // 2. Ensure it is actually running
             if (media.paused && media.readyState > 2) {
+                // Try playing
                 media.play().catch(e => {
-                    // If autoplay fails, try with mute
+                    // If autoplay failed because of sound, mute and retry
                     if (!media.muted) {
                         media.muted = true;
                         media.play().catch(() => {});
@@ -55,7 +73,8 @@
     // HELPER: SAFE CLICKER (Based on old.js)
     // =================================================================
 
-    let lastClickTime = 0; // Prevent double-clicks
+    let lastClickTime = 0; // Prevent double-clicks globally
+    let clickedSlides = new Set(); // Track clicked slides to enforce 1 click per slide
 
     function triggerClick(element) {
         const now = Date.now();
@@ -67,12 +86,11 @@
         console.log("[UMP] Unlocked! Clicking:", element);
         lastClickTime = now;
 
-        // Visual Feedback (Green Flash) - same as old.js
+        // Visual Feedback (Green Flash)
         element.style.border = "5px solid #00ff00";
 
-        // 1. Dispatch Events (The most reliable way for iSpring)
+        // Dispatch Events
         const events = ['mouseover', 'mouseenter', 'mousedown', 'mouseup', 'click'];
-
         events.forEach(type => {
             const evt = new MouseEvent(type, {
                 bubbles: true,
@@ -82,11 +100,8 @@
             element.dispatchEvent(evt);
         });
 
-        // 2. Find the specific HTML button inside and click it
         const actualBtn = element.querySelector('button');
-        if (actualBtn) {
-            actualBtn.click();
-        }
+        if (actualBtn) actualBtn.click();
     }
 
     // =================================================================
@@ -103,11 +118,15 @@
     }
 
     // =================================================================
-    // MAIN SEARCH LOGIC (Improved version of old.js)
+    // MAIN SEARCH LOGIC
     // =================================================================
 
+    // To solve "double skip", we track the current slide ID (or timer text)
+    // and ensure we only click ONCE for that specific state.
+    let lastProcessedTimer = "";
+
     function scanAndWait() {
-        // 1. Keep video running (same as old.js)
+        // 1. Keep video running
         ensureMediaPlaying();
 
         // 2. Find the container
@@ -130,7 +149,7 @@
             }
         }
 
-        // Priority C: Text Search (Fallback - same as old.js)
+        // Priority C: Text Search
         if (!target) {
             const allDivs = document.querySelectorAll('div, button, span');
             for (let el of allDivs) {
@@ -149,12 +168,17 @@
 
         // 3. Check Status & Execute
         if (target) {
-            // Check for iSpring timer logic
             const timeLabel = document.querySelector(ISPRING_TIME_SELECTOR);
+
+            // --- LOGIC A: ISPRING (Timer Based) ---
             if (timeLabel && target.classList.contains('next')) {
-                // iSpring player - check timer
                 const text = timeLabel.innerText || "";
                 const times = text.split('/');
+
+                // Track state to prevent double skipping on SAME slide
+                // If the time label text (e.g. "00:54 / 00:54") is EXACTLY the same as when we last clicked,
+                // we assume we are still on the old slide or transitioning.
+                const isSameStateAsLastClick = (lastProcessedTimer === text);
 
                 if (times.length === 2) {
                     const currentSec = parseSeconds(times[0]);
@@ -162,41 +186,48 @@
                     const isFinished = currentSec >= (totalSec - 1);
 
                     if (isFinished) {
-                        // UNLOCKED by timer: Check cooldown BEFORE clicking
-                        const now = Date.now();
-                        if (now - lastClickTime >= COOLDOWN_TIME) {
-                            // Green border + click
-                            target.style.border = "5px solid #00ff00";
-                            console.log("[UMP] iSpring timer done! Clicking:", target);
-                            lastClickTime = now;
+                        // UNLOCKED by timer
+                        if (!isSameStateAsLastClick) {
+                            const now = Date.now();
+                            if (now - lastClickTime >= COOLDOWN_TIME) {
+                                target.style.border = "5px solid #00ff00";
+                                console.log("[UMP] iSpring timer done! Clicking:", target);
 
-                            // Dispatch Events
-                            const events = ['mouseover', 'mouseenter', 'mousedown', 'mouseup', 'click'];
-                            events.forEach(type => {
-                                const evt = new MouseEvent(type, {
-                                    bubbles: true,
-                                    cancelable: true,
-                                    view: window
+                                lastClickTime = now;
+                                lastProcessedTimer = text; // Remember this state as "clicked"
+
+                                // Dispatch Events
+                                const events = ['mouseover', 'mouseenter', 'mousedown', 'mouseup', 'click'];
+                                events.forEach(type => {
+                                    const evt = new MouseEvent(type, {
+                                        bubbles: true,
+                                        cancelable: true,
+                                        view: window
+                                    });
+                                    target.dispatchEvent(evt);
                                 });
-                                target.dispatchEvent(evt);
-                            });
 
-                            // Find button inside and click
-                            const actualBtn = target.querySelector('button');
-                            if (actualBtn) {
-                                actualBtn.click();
+                                const actualBtn = target.querySelector('button');
+                                if (actualBtn) actualBtn.click();
+                            } else {
+                                // Cooldown active
+                                target.style.border = "5px solid #00ff00";
                             }
                         } else {
-                            // Cooldown active - show green but don't click
+                            // We already clicked for this specific time state. Wait for slide to change.
                             target.style.border = "5px solid #00ff00";
+                            // console.log("[UMP] Waiting for slide change...");
                         }
                     } else {
-                        // LOCKED by timer: Wait (Yellow border)
+                        // LOCKED by timer: Wait
                         target.style.border = "5px solid #FFFF00";
+                        // If we are waiting, reset the "last processed" tracker so next time we finish, we can click again (if it was partial reset)
+                        // But usually we just wait for next slide.
                     }
                 }
-            } else {
-                // Classic/iframe player - check disabled state (same as old.js)
+            }
+            // --- LOGIC B: CLASSIC / GENERIC ---
+            else {
                 const isLocked = target.classList.contains('disabled') ||
                                  target.classList.contains('blocked') ||
                                  target.classList.contains('cs-disabled') ||
@@ -204,10 +235,9 @@
                                  target.getAttribute('aria-disabled') === 'true';
 
                 if (isLocked) {
-                    // LOCKED: Wait (Yellow border)
                     target.style.border = "5px solid #FFFF00";
                 } else {
-                    // UNLOCKED: Click
+                    // For Classic, we rely on cooldown mainly.
                     triggerClick(target);
                 }
             }
