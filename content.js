@@ -2,103 +2,109 @@
     'use strict';
 
     // --- CONFIGURATION ---
-    const POLLING_INTERVAL = 1000; // Check every 1s
-    const PLAYBACK_SPEED = 1.0;    // Set to 1.5 or 2.0 if you want to watch faster
-    const TIME_THRESHOLD = 0.5;    // Click when within 0.5s of the end
+    const TIME_SELECTOR = '.label.time';       // Where the "01:20 / 01:25" text lives
+    const NEXT_SELECTOR = '.component_container.next'; // The container to click
+    const POLLING_INTERVAL = 1000;             // Check every 1 second
 
-    // --- HELPER: MANAGE VIDEO ---
-    function checkMediaStatus() {
-        const mediaElements = document.querySelectorAll('video, audio');
-        let isPlaying = false;
-        let isFinished = true; // Assume finished unless we find an active video
+    // --- CONTEXT CHECK ---
+    if (window.self === window.top) return;
 
-        mediaElements.forEach(media => {
-            // 1. Ensure muted (for browser autoplay) & set speed
-            if (!media.muted) media.muted = true;
-            if (media.playbackRate !== PLAYBACK_SPEED) media.playbackRate = PLAYBACK_SPEED;
-
-            // 2. Check if this media has a real duration
-            if (media.duration && !isNaN(media.duration) && media.duration > 1) {
-                // We found meaningful media
-                isPlaying = true;
-
-                // 3. Kickstart if paused
-                if (media.paused && media.readyState > 2) {
-                    media.play().catch(e => {}); 
-                }
-
-                // 4. CHECK TIME: Are we at the end?
-                const timeLeft = media.duration - media.currentTime;
-                // console.log(`[UMP Time] Time Left: ${timeLeft.toFixed(1)}s`);
-
-                if (timeLeft > TIME_THRESHOLD) {
-                    isFinished = false; // Still watching!
-                }
-            }
-        });
-
-        // Returns object: { hasMedia: boolean, readyToAdvance: boolean }
-        return { 
-            hasMedia: isPlaying, 
-            readyToAdvance: isFinished 
-        };
+    // --- HELPER: PARSE "MM:SS" TO SECONDS ---
+    function parseSeconds(timeStr) {
+        if (!timeStr) return 0;
+        // Clean up string (remove spaces, etc)
+        timeStr = timeStr.trim();
+        const parts = timeStr.split(':').map(Number);
+        
+        if (parts.length === 2) {
+            return (parts[0] * 60) + parts[1]; // MM:SS
+        } else if (parts.length === 3) {
+            return (parts[0] * 3600) + (parts[1] * 60) + parts[2]; // HH:MM:SS
+        }
+        return 0;
     }
 
-    // --- HELPER: CLICKER ---
-    function clickNext(element) {
-        console.log("[UMP Time] Slide Complete. Clicking...");
+    // --- HELPER: SAFE CLICKER ---
+    function triggerClick(element) {
+        console.log("[UMP Reader] Time match! Clicking Next...");
         
         // Visual Feedback (Green Flash)
         element.style.border = "5px solid #00ff00"; 
 
-        // Send Click Events
+        // Send Hover + Click events to the container (div)
+        // This avoids the "child.click" error by not touching the SVG
         const events = ['mouseover', 'mouseenter', 'mousedown', 'mouseup', 'click'];
         events.forEach(type => {
             element.dispatchEvent(new MouseEvent(type, {
-                bubbles: true, cancelable: true, view: window
+                bubbles: true, 
+                cancelable: true, 
+                view: window
             }));
         });
 
-        // Click the internal button if accessible
-        const actualBtn = element.querySelector('button');
-        if (actualBtn) actualBtn.click();
+        // Also try clicking the specific button element if it exists
+        // (The button sibling next to the svg, usually class 'component_base')
+        const actualButton = element.querySelector('button');
+        if (actualButton) actualButton.click();
+    }
+
+    // --- HELPER: MEDIA KICKSTARTER ---
+    // Ensures the timer actually moves by forcing the video to play
+    function keepTimerMoving() {
+        const mediaElements = document.querySelectorAll('video, audio');
+        mediaElements.forEach(media => {
+            if (!media.muted) media.muted = true; // Essential for autoplay
+            if (media.paused && media.readyState > 2) {
+                media.play().catch(e => {}); 
+            }
+        });
     }
 
     // --- MAIN ENGINE ---
     let isCoolingDown = false;
 
     setInterval(() => {
+        // 1. Keep the video playing so the text updates
+        keepTimerMoving();
+
         if (isCoolingDown) return;
 
-        // 1. Find the Next Button Container
-        const target = document.querySelector('.component_container.next');
+        // 2. Find the elements
+        const timeLabel = document.querySelector(TIME_SELECTOR);
+        const nextBtn = document.querySelector(NEXT_SELECTOR);
 
-        if (target && target.offsetParent !== null) {
+        if (timeLabel && nextBtn) {
             
-            // 2. Check the Video Status
-            const status = checkMediaStatus();
+            // 3. Parse the text "01:20 / 01:25"
+            const text = timeLabel.innerText || ""; // e.g. "01:20 / 01:25"
+            const times = text.split('/');
 
-            if (status.hasMedia && !status.readyToAdvance) {
-                // CASE A: Video is playing. WAIT.
-                target.style.border = "4px solid #FFFF00"; // Yellow = Waiting for timer
-                // console.log("[UMP Time] Waiting for video...");
-            
-            } else {
-                // CASE B: Video finished OR No video on this slide. CLICK.
-                
-                // Double check we haven't already clicked
-                if (!isCoolingDown) {
-                    clickNext(target);
+            if (times.length === 2) {
+                const currentSec = parseSeconds(times[0]);
+                const totalSec = parseSeconds(times[1]);
+
+                // 4. Compare
+                // We allow a 1-second buffer in case the timer stops at 01:24 / 01:25
+                const isFinished = currentSec >= (totalSec - 1); 
+
+                if (isFinished) {
+                    // FINISHED: Click!
+                    triggerClick(nextBtn);
                     
                     // Cooldown logic
                     isCoolingDown = true;
                     setTimeout(() => {
-                        if(target) target.style.border = "";
+                        if(nextBtn) nextBtn.style.border = "";
                         isCoolingDown = false;
-                    }, 4000); // Wait 4s for next slide
+                    }, 4000); 
+
+                } else {
+                    // STILL PLAYING: Wait.
+                    // console.log(`[UMP Reader] Waiting... ${currentSec} / ${totalSec}`);
+                    nextBtn.style.border = "3px solid #FFFF00"; // Yellow = Watching
                 }
             }
-        } 
+        }
     }, POLLING_INTERVAL);
 
 })();
