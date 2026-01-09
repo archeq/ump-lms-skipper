@@ -5,7 +5,7 @@ Zvibecodowana wtyczka do przeglądarki do automatyzacji przycisku 'Dalej' w odtw
 ## Instrukcja instalacji
 
 * **Stwórz folder:** Zrób sb jakiś folder i schowaj go gdzieś daleko (np. w dokumentach).
-* **Zapisz pliki:** Upewnij się, że oba pliki (content.js, manifest.json) są zapisane w Twoim folderze.
+* **Zapisz pliki:** Do góry kliknij zielony przycisk Code, kliknij Download ZIP i rozpakuj wszyskie pliki z tego archiwum do twojego folderu z wtyczką.
 * **Otwórz Rozszerzenia Chrome:** Wpisz `chrome://extensions/` w pasku adresu przeglądarki i naciśnij Enter.
 * **Włącz Tryb programisty:** Przełącz suwak w prawym górnym rogu ekranu.
 * **Załaduj rozpakowane:** Kliknij przycisk „Załaduj rozpakowane” (Load unpacked) w lewym górnym rogu i wybierz folder z plikami.
