@@ -7,12 +7,13 @@
     
     const POLLING_INTERVAL = 1000; 
     const PLAYBACK_SPEED = 1.0;
+    const COOLDOWN_TIME = 3000; // Increased to 3s to prevent double-skips
 
     // iSpring Settings
     const ISPRING_TIME_SELECTOR = '.label.time';       
     const ISPRING_NEXT_SELECTOR = '.component_container.next'; 
 
-    // Classic/Articulate/Iframe Settings
+    // Classic/Iframe Settings
     const CLASSIC_BUTTONS = [
         '#next', '#linkNext', 
         'button[aria-label="Next"]', 'button[aria-label="Dalej"]',
@@ -26,15 +27,30 @@
 
     if (window.self === window.top) return; 
 
-    // Helper: Smart Video Manager (Preserves Sound)
+    // Helper: Smart Video Manager (Fixes "10 Voices" Bug)
     function manageVideoState() {
         document.querySelectorAll('video, audio').forEach(media => {
+            // 1. VISIBILITY CHECK:
+            // If the media (or its parent) is hidden (display: none), ignore it.
+            // This prevents playing audio from future/past slides.
+            if (media.offsetParent === null && media.tagName !== 'AUDIO') return; // Video hidden
+            
+            // For Audio tags (which are invisible by nature), we check if they are
+            // inside a hidden container.
+            if (media.tagName === 'AUDIO') {
+                let parent = media.parentElement;
+                while (parent) {
+                    if (window.getComputedStyle(parent).display === 'none') return;
+                    parent = parent.parentElement;
+                }
+            }
+
             if (media.playbackRate !== PLAYBACK_SPEED) media.playbackRate = PLAYBACK_SPEED;
 
-            // Only act if paused
+            // Only act if paused and ready
             if (media.paused && media.readyState > 2) {
                 media.play().catch(() => {
-                    // Only mute if absolutely required by browser
+                    // Only mute if absolutely required by browser to force play
                     if (!media.muted) {
                         media.muted = true; 
                         media.play().catch(() => {});
@@ -44,41 +60,41 @@
         });
     }
 
-    // Helper: Apply Border (Merged Logic)
-    function setBorder(element, color) {
+    // Helper: Apply High-Vis Highlight (Fixes iSpring Border)
+    function setHighlight(element, color) {
         if (!element) return;
-        // We use the direct style approach from Code B, but keep box-sizing from Code A
-        element.style.border = `5px solid ${color}`;
-        element.style.boxSizing = "border-box"; 
-        // Force relative position if static, to ensure border shows inside complex layouts
-        if (getComputedStyle(element).position === 'static') {
-            element.style.position = 'relative';
-        }
+        
+        // Use outline AND box-shadow to ensure visibility on top of video players
+        // 'outline' sits outside/on-top, 'box-shadow' sits inside.
+        // We use !important to override player styles.
+        element.style.cssText += `
+            outline: 5px solid ${color} !important;
+            outline-offset: -5px !important; 
+            box-shadow: 0 0 15px ${color} !important;
+            opacity: 1 !important; 
+            visibility: visible !important;
+            z-index: 9999 !important;
+        `;
     }
 
-    function removeBorder(element) {
+    function removeHighlight(element) {
         if (!element) return;
-        element.style.border = "";
+        element.style.outline = "";
+        element.style.boxShadow = "";
     }
 
-    // Helper: Robust Clicker (Taken from Code B)
-    function triggerSafeClick(element) {
+    // Helper: Precise Clicker (Fixes Double Skip)
+    function triggerOneClick(element) {
         console.log("[UMP Action] Clicking:", element);
         
-        // 1. Dispatch Events (The most reliable way for iSpring)
-        const events = ['mouseover', 'mouseenter', 'mousedown', 'mouseup', 'click'];
-        events.forEach(type => {
-            element.dispatchEvent(new MouseEvent(type, {
-                bubbles: true, cancelable: true, view: window
-            }));
-        });
-
-        // 2. Find specific HTML button inside and click it (Fixes child element issues)
-        const actualBtn = element.querySelector('button');
-        if (actualBtn) {
-            actualBtn.click();
+        // 1. Try to find a real button inside (common in iSpring)
+        const innerBtn = element.querySelector('button');
+        
+        if (innerBtn) {
+            innerBtn.click();
         } else {
-            element.click();
+            // 2. Fallback: Click the container itself
+            element.click(); 
         }
     }
 
@@ -100,11 +116,9 @@
         const nextBtn = document.querySelector(ISPRING_NEXT_SELECTOR);
         const timeLabel = document.querySelector(ISPRING_TIME_SELECTOR);
 
-        // If we found the button, we assume this IS an iSpring player
         if (nextBtn) {
-            
-            // 1. Default State: Yellow (Found, Waiting)
-            setBorder(nextBtn, "#FFFF00");
+            // Default: Yellow (Waiting)
+            setHighlight(nextBtn, "#FFFF00");
 
             if (timeLabel) {
                 const text = timeLabel.innerText || "";
@@ -118,14 +132,14 @@
                     const isFinished = currentSec >= (totalSec - 1);
 
                     if (isFinished) {
-                        console.log("[UMP iSpring] Timer Done. Clicking...");
-                        setBorder(nextBtn, "#00ff00"); // Green Border
-                        triggerSafeClick(nextBtn);
-                        return true; // Clicked
+                        console.log("[UMP iSpring] Timer Done.");
+                        setHighlight(nextBtn, "#00ff00"); // Green
+                        triggerOneClick(nextBtn);
+                        return true; // Return TRUE to trigger cooldown
                     }
                 }
             }
-            return false; // Found button, but not time yet
+            return false; // Found button, not finished
         }
         return null; // Not iSpring
     }
@@ -138,7 +152,6 @@
         let targetBtn = null;
         for (let selector of CLASSIC_BUTTONS) {
             const el = document.querySelector(selector);
-            // Check offsetParent to ensure it's visible
             if (el && el.offsetParent !== null) {
                 targetBtn = el;
                 break;
@@ -146,21 +159,21 @@
         }
 
         if (targetBtn) {
-            // 1. Default State: Yellow (Found, Waiting)
-            setBorder(targetBtn, "#FFFF00");
+            // Default: Yellow (Found)
+            setHighlight(targetBtn, "#FFFF00");
 
             const isClassDisabled = CLASSIC_DISABLED.some(cls => targetBtn.classList.contains(cls));
             const isAriaDisabled = targetBtn.getAttribute('aria-disabled') === 'true';
 
             if (!isClassDisabled && !isAriaDisabled) {
-                console.log("[UMP Classic] Unlocked. Clicking...");
-                setBorder(targetBtn, "#00ff00"); // Green
-                triggerSafeClick(targetBtn);
+                console.log("[UMP Classic] Unlocked.");
+                setHighlight(targetBtn, "#00ff00"); // Green
+                triggerOneClick(targetBtn);
                 return true; 
             }
-            return false; // Found but locked
+            return false;
         }
-        return null; // Not Classic
+        return null; 
     }
 
     // =================================================================
@@ -170,31 +183,36 @@
     let isCoolingDown = false;
 
     setInterval(() => {
-        manageVideoState(); 
+        // Prevent action if we just clicked
+        if (isCoolingDown) {
+            manageVideoState(); // Keep managing video even during cooldown
+            return;
+        }
 
-        if (isCoolingDown) return;
+        manageVideoState(); 
 
         // 1. Try iSpring
         const iSpringResult = runISpringLogic();
         
-        // If iSpring detected button (true or false), stop there. don't run classic logic.
         if (iSpringResult !== null) {
-            if (iSpringResult === true) { // Clicked
+            if (iSpringResult === true) { 
                 isCoolingDown = true;
                 const btn = document.querySelector(ISPRING_NEXT_SELECTOR);
+                
+                // Remove highlight and reset cooldown after delay
                 setTimeout(() => { 
-                    removeBorder(btn); 
+                    removeHighlight(btn); 
                     isCoolingDown = false; 
-                }, 4000);
+                }, COOLDOWN_TIME);
             }
             return; 
         }
 
-        // 2. Try Classic (Only if iSpring wasn't found)
+        // 2. Try Classic (Only if iSpring wasn't detected)
         const classicResult = runClassicLogic();
         if (classicResult === true) {
             isCoolingDown = true;
-            setTimeout(() => { isCoolingDown = false; }, 2500);
+            setTimeout(() => { isCoolingDown = false; }, COOLDOWN_TIME);
         }
 
     }, POLLING_INTERVAL);
