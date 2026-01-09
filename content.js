@@ -31,28 +31,44 @@
     function manageVideoState() {
         document.querySelectorAll('video, audio').forEach(media => {
             // 1. VISIBILITY CHECK:
-            // If the media (or its parent) is hidden (display: none), ignore it.
-            // This prevents playing audio from future/past slides.
-            if (media.offsetParent === null && media.tagName !== 'AUDIO') return; // Video hidden
-            
-            // For Audio tags (which are invisible by nature), we check if they are
-            // inside a hidden container.
-            if (media.tagName === 'AUDIO') {
-                let parent = media.parentElement;
-                while (parent) {
-                    if (window.getComputedStyle(parent).display === 'none') return;
-                    parent = parent.parentElement;
+            // Skip if the element or any parent is hidden (display: none)
+            let element = media;
+            let isHidden = false;
+
+            while (element && element !== document.body) {
+                const style = window.getComputedStyle(element);
+                if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+                    isHidden = true;
+                    break;
                 }
+                element = element.parentElement;
             }
 
+            // If hidden, pause it and skip
+            if (isHidden) {
+                if (!media.paused) {
+                    media.pause();
+                }
+                return;
+            }
+
+            // 2. Check if media dimensions are 0 (another way elements can be "hidden")
+            if (media.offsetWidth === 0 || media.offsetHeight === 0 || media.offsetParent === null) {
+                if (!media.paused) {
+                    media.pause();
+                }
+                return;
+            }
+
+            // 3. Set playback speed
             if (media.playbackRate !== PLAYBACK_SPEED) media.playbackRate = PLAYBACK_SPEED;
 
-            // Only act if paused and ready
+            // 4. Only play if paused and ready
             if (media.paused && media.readyState > 2) {
                 media.play().catch(() => {
-                    // Only mute if absolutely required by browser to force play
+                    // Only mute if browser requires it for autoplay
                     if (!media.muted) {
-                        media.muted = true; 
+                        media.muted = true;
                         media.play().catch(() => {});
                     }
                 });
@@ -64,23 +80,29 @@
     function setHighlight(element, color) {
         if (!element) return;
         
-        // Use outline AND box-shadow to ensure visibility on top of video players
-        // 'outline' sits outside/on-top, 'box-shadow' sits inside.
-        // We use !important to override player styles.
-        element.style.cssText += `
-            outline: 5px solid ${color} !important;
-            outline-offset: -5px !important; 
-            box-shadow: 0 0 15px ${color} !important;
-            opacity: 1 !important; 
-            visibility: visible !important;
-            z-index: 9999 !important;
-        `;
+        console.log(`[UMP Highlight] Applying ${color} to:`, element);
+
+        // Use multiple techniques for maximum visibility
+        // !important ensures it won't be overridden by other styles
+        element.style.setProperty('border', `5px solid ${color}`, 'important');
+        element.style.setProperty('outline', `3px solid ${color}`, 'important');
+        element.style.setProperty('outline-offset', '2px', 'important');
+        element.style.setProperty('box-shadow', `0 0 20px ${color}`, 'important');
+
+        console.log(`[UMP Highlight] Applied styles:`, {
+            border: element.style.border,
+            outline: element.style.outline,
+            boxShadow: element.style.boxShadow
+        });
     }
 
     function removeHighlight(element) {
         if (!element) return;
-        element.style.outline = "";
-        element.style.boxShadow = "";
+        console.log("[UMP Highlight] Removing highlight from:", element);
+        element.style.removeProperty('border');
+        element.style.removeProperty('outline');
+        element.style.removeProperty('outline-offset');
+        element.style.removeProperty('box-shadow');
     }
 
     // Helper: Precise Clicker (Fixes Double Skip)
@@ -112,41 +134,63 @@
     // LOGIC A: ISPRING (Timer Based)
     // =================================================================
 
+    let lastISpringClickTime = 0; // Track when we last clicked to prevent double-clicks
+
     function runISpringLogic() {
         const nextBtn = document.querySelector(ISPRING_NEXT_SELECTOR);
         const timeLabel = document.querySelector(ISPRING_TIME_SELECTOR);
 
         if (nextBtn) {
-            // Default: Yellow (Waiting)
-            setHighlight(nextBtn, "#FFFF00");
+            console.log("[UMP iSpring] Button found:", nextBtn);
 
             if (timeLabel) {
                 const text = timeLabel.innerText || "";
+                console.log("[UMP iSpring] Timer text:", text);
                 const times = text.split('/');
 
                 if (times.length === 2) {
                     const currentSec = parseSeconds(times[0]);
                     const totalSec = parseSeconds(times[1]);
-                    
+                    console.log(`[UMP iSpring] Time: ${currentSec}/${totalSec}`);
+
                     // Check if finished (1s buffer)
                     const isFinished = currentSec >= (totalSec - 1);
 
                     if (isFinished) {
-                        console.log("[UMP iSpring] Timer Done.");
+                        // ALWAYS apply green highlight when finished (fixes iSpring highlight bug)
+                        console.log("[UMP iSpring] Applying GREEN highlight");
                         setHighlight(nextBtn, "#00ff00"); // Green
-                        triggerOneClick(nextBtn);
-                        return true; // Return TRUE to trigger cooldown
+
+                        // Only click if enough time has passed since last click
+                        const now = Date.now();
+                        if (now - lastISpringClickTime > COOLDOWN_TIME) {
+                            console.log("[UMP iSpring] Timer Done. Clicking!");
+                            lastISpringClickTime = now;
+                            triggerOneClick(nextBtn);
+                            return true; // Return TRUE to trigger cooldown
+                        }
+                    } else {
+                        // ALWAYS apply yellow highlight when waiting (fixes iSpring highlight bug)
+                        console.log("[UMP iSpring] Applying YELLOW highlight");
+                        setHighlight(nextBtn, "#FFFF00"); // Yellow
                     }
                 }
+            } else {
+                // No timer found, just show yellow
+                console.log("[UMP iSpring] No timer found, applying YELLOW highlight");
+                setHighlight(nextBtn, "#FFFF00");
             }
             return false; // Found button, not finished
         }
+
         return null; // Not iSpring
     }
 
     // =================================================================
     // LOGIC B: CLASSIC (Attribute/Lock Based)
     // =================================================================
+
+    let lastClassicClickTime = 0; // Track when we last clicked to prevent double-clicks
 
     function runClassicLogic() {
         let targetBtn = null;
@@ -159,21 +203,29 @@
         }
 
         if (targetBtn) {
-            // Default: Yellow (Found)
-            setHighlight(targetBtn, "#FFFF00");
-
             const isClassDisabled = CLASSIC_DISABLED.some(cls => targetBtn.classList.contains(cls));
             const isAriaDisabled = targetBtn.getAttribute('aria-disabled') === 'true';
 
             if (!isClassDisabled && !isAriaDisabled) {
-                console.log("[UMP Classic] Unlocked.");
+                // ALWAYS apply green highlight when unlocked
                 setHighlight(targetBtn, "#00ff00"); // Green
-                triggerOneClick(targetBtn);
-                return true; 
+
+                // Only click if enough time has passed since last click
+                const now = Date.now();
+                if (now - lastClassicClickTime > COOLDOWN_TIME) {
+                    console.log("[UMP Classic] Unlocked.");
+                    lastClassicClickTime = now;
+                    triggerOneClick(targetBtn);
+                    return true;
+                }
+            } else {
+                // ALWAYS apply yellow highlight when locked
+                setHighlight(targetBtn, "#FFFF00"); // Yellow
             }
             return false;
         }
-        return null; 
+
+        return null;
     }
 
     // =================================================================
