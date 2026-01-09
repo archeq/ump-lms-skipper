@@ -1,5 +1,5 @@
 # UMP LMS skipper
-Zvibecodowana wtyczka do przeglądarki do automatyzacji przycisku 'Dalej' w odtwarzaczu na portalu lms.ump.edu.pl
+Zvibecodowana wtyczka do przeglądarki dla studentów UM w Poznaniu do automatyzacji przycisku 'Dalej' w odtwarzaczu na lms.ump.edu.pl
 
 
 ## Instrukcja instalacji
