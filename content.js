@@ -2,105 +2,93 @@
     'use strict';
 
     // --- CONFIGURATION ---
-    const CONTAINER_SELECTOR = '.component_container.next'; 
-    const LOCKED_CLASS = 'disabled';
-    const POLLING_INTERVAL = 500; // Check fast (every 0.5s)
+    const TARGET_TEXTS = ["NASTĘPNY", "DALEJ", "NEXT"];
+    const POLLING_INTERVAL = 1000;
 
-    // --- CONTEXT CHECK ---
-    if (window.self === window.top) return;
-
-    console.log("[UMP Speedrunner] Active. Bypassing media & locks...");
-
-    // --- HELPER 1: THE MEDIA SKIPPER ---
-    // Instead of playing (which fails), we skip to the end.
+    // --- HELPER: MEDIA SKIPPER ---
+    // Cheats the video by setting time to the end
     function skipMedia() {
         const mediaElements = document.querySelectorAll('video, audio');
-        
         mediaElements.forEach(media => {
-            // 1. Mute to prevent audio glitches
-            if (!media.muted) media.muted = true;
-
-            // 2. If it has a duration, skip to the end
+            if (!media.muted) media.muted = true; 
             if (media.duration && !isNaN(media.duration)) {
-                // If we aren't at the end yet, skip there
                 if (media.currentTime < media.duration - 0.5) {
-                    console.log("[UMP Speedrunner] Skipping media to end...");
-                    try {
-                        media.currentTime = media.duration; 
-                        // Sometimes triggering 'ended' manually helps iSpring realize it's done
-                        media.dispatchEvent(new Event('ended'));
-                    } catch (e) {
-                        // Ignore errors if media isn't fully loaded yet
-                    }
+                    // console.log("[UMP Search] Skipping media...");
+                    try { media.currentTime = media.duration; } catch (e) {}
                 }
             }
         });
     }
 
-    // --- HELPER 2: THE LOCK PICKER ---
-    function forceUnlockAndClick(container) {
-        // 1. Force remove the disabled class
-        if (container.classList.contains(LOCKED_CLASS)) {
-            console.log("[UMP Speedrunner] Removing 'disabled' lock manually...");
-            container.classList.remove(LOCKED_CLASS);
-            container.removeAttribute('disabled');
-            container.setAttribute('aria-disabled', 'false');
-        }
+    // --- HELPER: FORCE CLICK ---
+    function forceClick(element) {
+        console.log("[UMP Search] CLICKING:", element);
+        
+        // 1. Visual Feedback (Orange Border)
+        element.style.border = "5px solid #FFA500"; 
+        element.style.boxShadow = "0 0 10px #FFA500";
 
-        // 2. Visual Feedback (Cyan Border = We forced it open)
-        const oldBorder = container.style.border;
-        container.style.border = "5px solid #00ffff"; 
+        // 2. Unlock
+        element.classList.remove('disabled');
+        element.removeAttribute('disabled');
 
         // 3. Click Sequence
-        // iSpring needs the hover events to register the button as "active"
-        const events = [
-            new MouseEvent('mouseover', { bubbles: true, view: window }),
-            new MouseEvent('mouseenter', { bubbles: true, view: window }),
-            new MouseEvent('mousedown', { bubbles: true, view: window }),
-            new MouseEvent('mouseup', { bubbles: true, view: window }),
-            new MouseEvent('click', { bubbles: true, view: window })
-        ];
-        
-        events.forEach(evt => container.dispatchEvent(evt));
+        const events = ['mouseover', 'mousedown', 'mouseup', 'click'];
+        events.forEach(type => {
+            element.dispatchEvent(new MouseEvent(type, {
+                bubbles: true, cancelable: true, view: window
+            }));
+        });
 
-        // 4. Also click the button inside, just to be sure
-        const childBtn = container.querySelector('button');
-        if (childBtn) {
-            childBtn.click();
-        }
-
-        // 5. Cleanup
-        setTimeout(() => {
-            if(container) container.style.border = oldBorder;
-        }, 1000);
+        // 4. Click children too (often the button is inside the div)
+        const children = element.querySelectorAll('*');
+        children.forEach(child => child.click());
     }
 
-    // --- MAIN ENGINE ---
-    let isCoolingDown = false;
-
-    setInterval(() => {
-        // 1. Constantly try to skip media to avoid "NotAllowedError"
+    // --- MAIN SEARCH LOGIC ---
+    function scanAndClick() {
         skipMedia();
 
-        if (isCoolingDown) return;
-
-        const container = document.querySelector(CONTAINER_SELECTOR);
-
-        if (container) {
-            // Check if visible (we don't want to click invisible buttons)
-            const isVisible = container.offsetParent !== null;
-
-            if (isVisible) {
-                // We DON'T check if it's locked. We unlock it ourselves.
-                forceUnlockAndClick(container);
-
-                // Longer cooldown to allow the next slide to load
-                isCoolingDown = true;
-                setTimeout(() => {
-                    isCoolingDown = false;
-                }, 4000); // 4 seconds wait
+        // Strategy A: Find by specific iSpring Class (from your screenshot)
+        // We look for the button, not just the container
+        const buttons = document.querySelectorAll('.component_container.next, .component_base.next');
+        
+        for (let btn of buttons) {
+            if (btn.offsetParent !== null) { // Is it visible?
+                forceClick(btn);
+                return; // Stop after clicking
             }
-        } 
-    }, POLLING_INTERVAL);
+        }
+
+        // Strategy B: Text Search (Fallback)
+        // Looks for ANY button/div containing "NASTĘPNY"
+        const allDivs = document.querySelectorAll('div, button, span');
+        for (let el of allDivs) {
+            // Check if element has our target text and is visible
+            if (el.innerText && TARGET_TEXTS.includes(el.innerText.trim().toUpperCase())) {
+                if (el.offsetParent !== null && el.tagName !== 'SCRIPT') {
+                    // Start climbing up to find the clickable parent container
+                    let clickable = el;
+                    while (clickable && !clickable.classList.contains('component_container') && clickable !== document.body) {
+                        clickable = clickable.parentElement;
+                    }
+                    
+                    if (clickable && clickable !== document.body) {
+                        forceClick(clickable);
+                        return;
+                    } else {
+                        // If no container found, click the text element itself
+                        forceClick(el);
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    // --- INIT ---
+    // Run this logic in every frame
+    console.log("[UMP Search] Active in frame:", window.location.href);
+    setInterval(scanAndClick, POLLING_INTERVAL);
 
 })();
