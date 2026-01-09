@@ -31,12 +31,24 @@
 
     console.log("[UMP Universal] Active. Scanning for player type...");
 
-    // Helper: Keep videos running (Critical for both players)
+    // Helper: Apply Border safely (fixes the visibility bug)
+    function forceBorder(element, color) {
+        if (!element) return;
+        // We use !important to override any specific player styles
+        element.style.cssText += `border: 4px solid ${color} !important; box-sizing: border-box !important;`;
+    }
+
+    // Helper: Remove Border
+    function clearBorder(element) {
+        if (!element) return;
+        element.style.border = "";
+    }
+
+    // Helper: Keep videos running
     function keepMediaAlive() {
         document.querySelectorAll('video, audio').forEach(media => {
-            if (!media.muted) media.muted = true; // Mute to bypass browser block
+            if (!media.muted) media.muted = true; 
             if (media.playbackRate !== PLAYBACK_SPEED) media.playbackRate = PLAYBACK_SPEED;
-            
             if (media.paused && media.readyState > 2) {
                 media.play().catch(e => {}); 
             }
@@ -62,9 +74,6 @@
         const nextBtn = document.querySelector(ISPRING_NEXT_SELECTOR);
 
         if (timeLabel && nextBtn) {
-            // Apply visual border (Pink = iSpring Mode detected)
-            if (!nextBtn.style.border) nextBtn.style.border = "2px solid #ff00ff";
-
             const text = timeLabel.innerText || "";
             const times = text.split('/');
 
@@ -79,7 +88,7 @@
                     console.log("[UMP iSpring] Slide Done. Clicking...");
                     
                     // Green Flash
-                    nextBtn.style.border = "5px solid #00ff00";
+                    forceBorder(nextBtn, "#00ff00"); // Green
 
                     // Single Shot Click on Container
                     const events = ['mouseover', 'mouseenter', 'mousedown', 'mouseup', 'click'];
@@ -92,7 +101,7 @@
                     return true; // Action taken
                 } else {
                     // Waiting
-                    nextBtn.style.border = "3px solid #FFFF00"; // Yellow
+                    forceBorder(nextBtn, "#FFFF00"); // Yellow
                 }
             }
             return false; // Found player, but waiting
@@ -107,7 +116,7 @@
     function runClassicLogic() {
         let targetBtn = null;
 
-        // Find first visible button from our list
+        // Find first visible button
         for (let selector of CLASSIC_BUTTONS) {
             const el = document.querySelector(selector);
             if (el && el.offsetParent !== null) {
@@ -117,9 +126,6 @@
         }
 
         if (targetBtn) {
-            // Apply visual border (Cyan = Classic Mode detected)
-            if (!targetBtn.style.border) targetBtn.style.border = "2px solid #00ffff";
-
             // Check Disabled State
             const isClassDisabled = CLASSIC_DISABLED.some(cls => targetBtn.classList.contains(cls));
             const isAriaDisabled = targetBtn.getAttribute('aria-disabled') === 'true';
@@ -128,7 +134,7 @@
                 console.log("[UMP Classic] Button Enabled. Clicking...");
                 
                 // Green Flash
-                targetBtn.style.border = "5px solid #00ff00";
+                forceBorder(targetBtn, "#00ff00");
 
                 // Standard Click
                 targetBtn.click();
@@ -136,7 +142,7 @@
                 return true; // Action taken
             } else {
                 // Waiting
-                targetBtn.style.border = "3px solid #FFFF00"; // Yellow
+                forceBorder(targetBtn, "#FFFF00"); // Yellow
             }
             return false;
         }
@@ -150,29 +156,32 @@
     let isCoolingDown = false;
 
     setInterval(() => {
-        keepMediaAlive(); // Universal Autoplay Fix
+        keepMediaAlive();
 
         if (isCoolingDown) return;
 
-        // Priority 1: Try iSpring Logic
-        // We try this first because it has a specific timer structure
+        // Priority 1: iSpring
         const iSpringResult = runISpringLogic();
         
         if (iSpringResult !== null) {
-            // We are definitely in iSpring mode.
             if (iSpringResult === true) { 
                 // We clicked. Cooldown.
                 isCoolingDown = true;
-                setTimeout(() => { isCoolingDown = false; }, 4000);
+                
+                // Clear border after click so it doesn't look stuck
+                const btn = document.querySelector(ISPRING_NEXT_SELECTOR);
+                setTimeout(() => { 
+                    clearBorder(btn); 
+                    isCoolingDown = false; 
+                }, 4000);
             }
-            return; // Don't run Classic logic if iSpring was found
+            return; 
         }
 
-        // Priority 2: Try Classic Logic
+        // Priority 2: Classic
         const classicResult = runClassicLogic();
 
         if (classicResult === true) {
-            // We clicked. Cooldown.
             isCoolingDown = true;
             setTimeout(() => { isCoolingDown = false; }, 2500);
         }
