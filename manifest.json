@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "UMP Moodle Auto-Next",
-  "version": "3.2",
+  "version": "3.3",
   "description": "Automates the Next button in Articulate players on lms.ump.edu.pl",
   "permissions": ["scripting"],
   "host_permissions": [
