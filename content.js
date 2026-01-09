@@ -53,7 +53,7 @@
             // 2. Ensure it is actually running
             if (media.paused && media.readyState > 2) {
                 // Try playing
-                media.play().catch(e => {
+                media.play().catch(() => {
                     // If autoplay failed because of sound, mute and retry
                     if (!media.muted) {
                         media.muted = true;
@@ -74,7 +74,6 @@
     // =================================================================
 
     let lastClickTime = 0; // Prevent double-clicks globally
-    let clickedSlides = new Set(); // Track clicked slides to enforce 1 click per slide
 
     function triggerClick(element) {
         const now = Date.now();
@@ -134,6 +133,11 @@
     // and ensure we only click ONCE for that specific state.
     let lastProcessedTimer = "";
 
+    // For Slider-based player
+    let lastSliderTransform = "";
+    let lastSliderMoveTime = Date.now();
+    const SLIDER_STALL_THRESHOLD = 500; // 2.5s threshold
+
     function scanAndWait() {
         // 1. Keep video running
         ensureMediaPlaying();
@@ -178,6 +182,7 @@
         // 3. Check Status & Execute
         if (target) {
             const timeLabel = document.querySelector(ISPRING_TIME_SELECTOR);
+            const sliderThumb = document.querySelector('.progressbar__thumb');
 
             // --- LOGIC A: ISPRING (Timer Based) ---
             if (timeLabel && target.classList.contains('next')) {
@@ -241,7 +246,31 @@
                     }
                 }
             }
-            // --- LOGIC B: CLASSIC / GENERIC ---
+            // --- LOGIC B: SLIDER PLAYER (Progressbar Based) ---
+            else if (sliderThumb) {
+                const currentTransform = sliderThumb.style.transform || "";
+
+                // If transform changed, update tracking
+                if (currentTransform !== lastSliderTransform) {
+                    lastSliderTransform = currentTransform;
+                    lastSliderMoveTime = Date.now();
+
+                    // Still moving -> LOCKED
+                    target.style.border = "5px solid #FFFF00";
+                } else {
+                    // Not changed. Check how long it has been stalled.
+                    const stalledDuration = Date.now() - lastSliderMoveTime;
+
+                    if (stalledDuration > SLIDER_STALL_THRESHOLD) {
+                         // UNLOCKED by slider stall (2.5s)
+                         triggerClick(target); // Uses the generic safe clicker
+                    } else {
+                         // Waiting for stall threshold
+                         target.style.border = "5px solid #FFFF00";
+                    }
+                }
+            }
+            // --- LOGIC C: CLASSIC / GENERIC ---
             else {
                 const isLocked = target.classList.contains('disabled') ||
                                  target.classList.contains('blocked') ||
