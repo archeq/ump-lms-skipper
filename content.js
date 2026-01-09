@@ -12,7 +12,7 @@
     const ISPRING_TIME_SELECTOR = '.label.time';       
     const ISPRING_NEXT_SELECTOR = '.component_container.next'; 
 
-    // Classic/Articulate Settings
+    // Classic/Articulate/Iframe Settings
     const CLASSIC_BUTTONS = [
         '#next', '#linkNext', 
         'button[aria-label="Next"]', 'button[aria-label="Dalej"]',
@@ -44,18 +44,42 @@
         });
     }
 
-    // Helper: Apply Border (The Fix)
-    // Uses standard border + box-sizing to match your working snippet
+    // Helper: Apply Border (Merged Logic)
     function setBorder(element, color) {
         if (!element) return;
-        // !important ensures it overrides iSpring's CSS
-        // box-sizing ensures the border is visible even inside overflow:hidden containers
-        element.style.cssText += `border: 5px solid ${color} !important; box-sizing: border-box !important;`;
+        // We use the direct style approach from Code B, but keep box-sizing from Code A
+        element.style.border = `5px solid ${color}`;
+        element.style.boxSizing = "border-box"; 
+        // Force relative position if static, to ensure border shows inside complex layouts
+        if (getComputedStyle(element).position === 'static') {
+            element.style.position = 'relative';
+        }
     }
 
     function removeBorder(element) {
         if (!element) return;
         element.style.border = "";
+    }
+
+    // Helper: Robust Clicker (Taken from Code B)
+    function triggerSafeClick(element) {
+        console.log("[UMP Action] Clicking:", element);
+        
+        // 1. Dispatch Events (The most reliable way for iSpring)
+        const events = ['mouseover', 'mouseenter', 'mousedown', 'mouseup', 'click'];
+        events.forEach(type => {
+            element.dispatchEvent(new MouseEvent(type, {
+                bubbles: true, cancelable: true, view: window
+            }));
+        });
+
+        // 2. Find specific HTML button inside and click it (Fixes child element issues)
+        const actualBtn = element.querySelector('button');
+        if (actualBtn) {
+            actualBtn.click();
+        } else {
+            element.click();
+        }
     }
 
     // Helper: Parse "MM:SS"
@@ -73,50 +97,48 @@
     // =================================================================
 
     function runISpringLogic() {
-        const timeLabel = document.querySelector(ISPRING_TIME_SELECTOR);
         const nextBtn = document.querySelector(ISPRING_NEXT_SELECTOR);
+        const timeLabel = document.querySelector(ISPRING_TIME_SELECTOR);
 
-        if (timeLabel && nextBtn) {
-            const text = timeLabel.innerText || "";
-            const times = text.split('/');
+        // If we found the button, we assume this IS an iSpring player
+        if (nextBtn) {
+            
+            // 1. Default State: Yellow (Found, Waiting)
+            setBorder(nextBtn, "#FFFF00");
 
-            if (times.length === 2) {
-                const currentSec = parseSeconds(times[0]);
-                const totalSec = parseSeconds(times[1]);
-                
-                // Check if finished (1s buffer)
-                const isFinished = currentSec >= (totalSec - 1);
+            if (timeLabel) {
+                const text = timeLabel.innerText || "";
+                const times = text.split('/');
 
-                if (isFinished) {
-                    console.log("[UMP iSpring] Done. Clicking...");
-                    setBorder(nextBtn, "#00ff00"); // Green Border
+                if (times.length === 2) {
+                    const currentSec = parseSeconds(times[0]);
+                    const totalSec = parseSeconds(times[1]);
+                    
+                    // Check if finished (1s buffer)
+                    const isFinished = currentSec >= (totalSec - 1);
 
-                    // Send Hover + Click events
-                    ['mouseover', 'mouseenter', 'mousedown', 'mouseup', 'click'].forEach(type => {
-                        nextBtn.dispatchEvent(new MouseEvent(type, {
-                            bubbles: true, cancelable: true, view: window
-                        }));
-                    });
-
-                    return true; // Clicked
-                } else {
-                    // Waiting
-                    setBorder(nextBtn, "#FFFF00"); // Yellow Border
+                    if (isFinished) {
+                        console.log("[UMP iSpring] Timer Done. Clicking...");
+                        setBorder(nextBtn, "#00ff00"); // Green Border
+                        triggerSafeClick(nextBtn);
+                        return true; // Clicked
+                    }
                 }
             }
-            return false; 
+            return false; // Found button, but not time yet
         }
-        return null; 
+        return null; // Not iSpring
     }
 
     // =================================================================
-    // LOGIC B: CLASSIC (Attribute Based)
+    // LOGIC B: CLASSIC (Attribute/Lock Based)
     // =================================================================
 
     function runClassicLogic() {
         let targetBtn = null;
         for (let selector of CLASSIC_BUTTONS) {
             const el = document.querySelector(selector);
+            // Check offsetParent to ensure it's visible
             if (el && el.offsetParent !== null) {
                 targetBtn = el;
                 break;
@@ -124,20 +146,21 @@
         }
 
         if (targetBtn) {
+            // 1. Default State: Yellow (Found, Waiting)
+            setBorder(targetBtn, "#FFFF00");
+
             const isClassDisabled = CLASSIC_DISABLED.some(cls => targetBtn.classList.contains(cls));
             const isAriaDisabled = targetBtn.getAttribute('aria-disabled') === 'true';
 
             if (!isClassDisabled && !isAriaDisabled) {
-                console.log("[UMP Classic] Clicking...");
+                console.log("[UMP Classic] Unlocked. Clicking...");
                 setBorder(targetBtn, "#00ff00"); // Green
-                targetBtn.click();
+                triggerSafeClick(targetBtn);
                 return true; 
-            } else {
-                setBorder(targetBtn, "#FFFF00"); // Yellow
             }
-            return false;
+            return false; // Found but locked
         }
-        return null; 
+        return null; // Not Classic
     }
 
     // =================================================================
@@ -153,8 +176,10 @@
 
         // 1. Try iSpring
         const iSpringResult = runISpringLogic();
+        
+        // If iSpring detected button (true or false), stop there. don't run classic logic.
         if (iSpringResult !== null) {
-            if (iSpringResult === true) { 
+            if (iSpringResult === true) { // Clicked
                 isCoolingDown = true;
                 const btn = document.querySelector(ISPRING_NEXT_SELECTOR);
                 setTimeout(() => { 
@@ -165,11 +190,10 @@
             return; 
         }
 
-        // 2. Try Classic
+        // 2. Try Classic (Only if iSpring wasn't found)
         const classicResult = runClassicLogic();
         if (classicResult === true) {
             isCoolingDown = true;
-            // Clear border instantly for classic players as they usually refresh the DOM
             setTimeout(() => { isCoolingDown = false; }, 2500);
         }
 
