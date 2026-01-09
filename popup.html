@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body {
+      width: 200px;
+      padding: 10px;
+      font-family: Arial, sans-serif;
+      text-align: center;
+    }
+    .switch-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 10px;
+    }
+    h3 {
+      margin: 0 0 10px 0;
+      color: #333;
+    }
+    label {
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+    }
+    input[type="checkbox"] {
+      margin-right: 8px;
+    }
+  </style>
+</head>
+<body>
+  <h3>UMP Skipper</h3>
+  <div class="switch-container">
+    <label>
+      <input type="checkbox" id="toggleSkip">
+      Enable Auto-Skip
+    </label>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
+

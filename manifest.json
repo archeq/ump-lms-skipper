@@ -1,9 +1,12 @@
 {
   "manifest_version": 3,
   "name": "UMP LMS skipper",
-  "version": "3.3.8",
+  "version": "3.3.9",
   "description": "Automates the Next button in Articulate players on lms.ump.edu.pl",
-  "permissions": ["scripting"],
+  "permissions": ["scripting", "storage"],
+  "action": {
+    "default_popup": "popup.html"
+  },
   "host_permissions": [
     "*://lms.ump.edu.pl/*"
   ],

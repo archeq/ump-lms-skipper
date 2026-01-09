@@ -23,6 +23,27 @@
 
     console.log('[UMP] Script loaded and running');
 
+    // State for enabling/disabling the script via popup
+    let isEnabled = true;
+
+    // Load initial state
+    if (chrome.storage && chrome.storage.local) {
+        chrome.storage.local.get(['isEnabled'], (result) => {
+            if (result.isEnabled !== undefined) {
+                isEnabled = result.isEnabled;
+                console.log('[UMP] Initial state loaded:', isEnabled ? 'ENABLED' : 'DISABLED');
+            }
+        });
+
+        // Listen for changes
+        chrome.storage.onChanged.addListener((changes, namespace) => {
+            if (namespace === 'local' && changes.isEnabled) {
+                isEnabled = changes.isEnabled.newValue;
+                console.log('[UMP] State changed to:', isEnabled ? 'ENABLED' : 'DISABLED');
+            }
+        });
+    }
+
     // =================================================================
     // HELPER: ENSURE VIDEO PLAYS (Improved with visibility check for audio chaos)
     // =================================================================
@@ -139,6 +160,8 @@
     const SLIDER_STALL_THRESHOLD = 500; // 2.5s threshold
 
     function scanAndWait() {
+        if (!isEnabled) return;
+
         // 1. Keep video running
         ensureMediaPlaying();
 
