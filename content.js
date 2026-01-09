@@ -30,12 +30,18 @@
     function ensureMediaPlaying() {
         const mediaElements = document.querySelectorAll('video, audio');
         mediaElements.forEach(media => {
-            // 1. Mute is required for auto-progress
-            if (!media.muted) media.muted = true;
+            // 1. Unmute for sound (changed from old.js)
+            if (media.muted) media.muted = false;
 
             // 2. Ensure it is actually running
             if (media.paused && media.readyState > 2) {
-                media.play().catch(e => {});
+                media.play().catch(e => {
+                    // If autoplay fails, try with mute
+                    if (!media.muted) {
+                        media.muted = true;
+                        media.play().catch(() => {});
+                    }
+                });
             }
 
             // 3. Set Speed
@@ -156,8 +162,34 @@
                     const isFinished = currentSec >= (totalSec - 1);
 
                     if (isFinished) {
-                        // UNLOCKED by timer: Click
-                        triggerClick(target);
+                        // UNLOCKED by timer: Check cooldown BEFORE clicking
+                        const now = Date.now();
+                        if (now - lastClickTime >= COOLDOWN_TIME) {
+                            // Green border + click
+                            target.style.border = "5px solid #00ff00";
+                            console.log("[UMP] iSpring timer done! Clicking:", target);
+                            lastClickTime = now;
+
+                            // Dispatch Events
+                            const events = ['mouseover', 'mouseenter', 'mousedown', 'mouseup', 'click'];
+                            events.forEach(type => {
+                                const evt = new MouseEvent(type, {
+                                    bubbles: true,
+                                    cancelable: true,
+                                    view: window
+                                });
+                                target.dispatchEvent(evt);
+                            });
+
+                            // Find button inside and click
+                            const actualBtn = target.querySelector('button');
+                            if (actualBtn) {
+                                actualBtn.click();
+                            }
+                        } else {
+                            // Cooldown active - show green but don't click
+                            target.style.border = "5px solid #00ff00";
+                        }
                     } else {
                         // LOCKED by timer: Wait (Yellow border)
                         target.style.border = "5px solid #FFFF00";
