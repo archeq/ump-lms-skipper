@@ -37,6 +37,14 @@
 
         if (allMedia.length > 0 && !hasSimulatedInteraction) {
             console.log(`[UMP Audio] Found ${allMedia.length} media element(s)`);
+
+            // Simulate user interaction ONCE for ALL media elements
+            ['click', 'touchstart', 'pointerdown'].forEach(eventType => {
+                const event = new Event(eventType, { bubbles: true, cancelable: true });
+                document.dispatchEvent(event);
+            });
+            hasSimulatedInteraction = true;
+            console.log('[UMP Audio] Simulated user interaction for autoplay');
         }
 
         allMedia.forEach(media => {
@@ -73,19 +81,7 @@
             // 3. Set playback speed
             if (media.playbackRate !== PLAYBACK_SPEED) media.playbackRate = PLAYBACK_SPEED;
 
-            // 4. Simulate user interaction ONCE to enable autoplay
-            if (!hasSimulatedInteraction) {
-                // Dispatch events to simulate user interaction
-                ['click', 'touchstart', 'pointerdown'].forEach(eventType => {
-                    const event = new Event(eventType, { bubbles: true, cancelable: true });
-                    media.dispatchEvent(event);
-                    document.dispatchEvent(event);
-                });
-                hasSimulatedInteraction = true;
-                console.log('[UMP Audio] Simulated user interaction for autoplay');
-            }
-
-            // 5. Only play if paused and ready
+            // 4. Only play if paused and ready
             if (media.paused && media.readyState > 2) {
                 media.play().catch(err => {
                     // Only mute if browser requires it for autoplay
@@ -103,21 +99,30 @@
 
     // Helper: Apply High-Vis Highlight (Fixes iSpring Border)
     function setHighlight(element, color) {
-        if (!element) return;
-        
-        console.log(`[UMP Highlight] Applying ${color} highlight`);
+        if (!element) {
+            console.log('[UMP Highlight] ERROR: Element is null!');
+            return;
+        }
 
-        // Use multiple techniques for maximum visibility
-        // !important ensures it won't be overridden by other styles
-        element.style.setProperty('border', `10px solid ${color}`, 'important');
-        element.style.setProperty('outline', `5px solid ${color}`, 'important');
-        element.style.setProperty('outline-offset', '3px', 'important');
-        element.style.setProperty('box-shadow', `0 0 30px 10px ${color}`, 'important');
-        element.style.setProperty('position', 'relative', 'important');
-        element.style.setProperty('z-index', '999999', 'important');
+        try {
+            console.log(`[UMP Highlight] Applying ${color} highlight to:`, element.className);
 
-        // Force repaint
-        element.offsetHeight;
+            // Use multiple techniques for maximum visibility
+            // !important ensures it won't be overridden by other styles
+            element.style.setProperty('border', `10px solid ${color}`, 'important');
+            element.style.setProperty('outline', `5px solid ${color}`, 'important');
+            element.style.setProperty('outline-offset', '3px', 'important');
+            element.style.setProperty('box-shadow', `0 0 30px 10px ${color}`, 'important');
+            element.style.setProperty('position', 'relative', 'important');
+            element.style.setProperty('z-index', '999999', 'important');
+
+            // Force repaint
+            element.offsetHeight;
+
+            console.log(`[UMP Highlight] ✅ Successfully applied ${color} highlight`);
+        } catch (err) {
+            console.error('[UMP Highlight] ERROR applying highlight:', err);
+        }
     }
 
     function removeHighlight(element) {
@@ -166,7 +171,7 @@
         const timeLabel = document.querySelector(ISPRING_TIME_SELECTOR);
 
         if (nextBtn) {
-            console.log('[UMP iSpring] Button found!');
+            console.log('[UMP iSpring] Button found!', nextBtn);
 
             if (timeLabel) {
                 const text = timeLabel.innerText || "";
@@ -181,8 +186,9 @@
 
                     if (isFinished) {
                         // ALWAYS apply green highlight when finished (fixes iSpring highlight bug)
-                        console.log('[UMP iSpring] 🟢 Applying GREEN highlight');
+                        console.log('[UMP iSpring] 🟢 Video finished, calling setHighlight...');
                         setHighlight(nextBtn, "#00ff00"); // Green
+                        console.log('[UMP iSpring] setHighlight called with GREEN');
 
                         // Only click if enough time has passed since last click
                         const now = Date.now();
@@ -194,14 +200,16 @@
                         }
                     } else {
                         // ALWAYS apply yellow highlight when waiting (fixes iSpring highlight bug)
-                        console.log(`[UMP iSpring] 🟡 Applying YELLOW highlight (${currentSec}/${totalSec})`);
+                        console.log(`[UMP iSpring] 🟡 Video playing (${currentSec}/${totalSec}), calling setHighlight...`);
                         setHighlight(nextBtn, "#FFFF00"); // Yellow
+                        console.log('[UMP iSpring] setHighlight called with YELLOW');
                     }
                 }
             } else {
                 // No timer found, just show yellow
-                console.log('[UMP iSpring] No timer found, applying YELLOW highlight');
+                console.log('[UMP iSpring] No timer found, calling setHighlight...');
                 setHighlight(nextBtn, "#FFFF00");
+                console.log('[UMP iSpring] setHighlight called with YELLOW (no timer)');
             }
             return false; // Found button, not finished
         }
