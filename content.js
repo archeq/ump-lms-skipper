@@ -25,13 +25,21 @@
     // SHARED UTILITIES
     // =================================================================
 
-    if (window.self === window.top) return; 
+    if (window.self === window.top) return;
+
+    console.log('[UMP] Script loaded and running in iframe');
 
     // Helper: Smart Video Manager (Fixes "10 Voices" Bug)
     let hasSimulatedInteraction = false;
 
     function manageVideoState() {
-        document.querySelectorAll('video, audio').forEach(media => {
+        const allMedia = document.querySelectorAll('video, audio');
+
+        if (allMedia.length > 0 && !hasSimulatedInteraction) {
+            console.log(`[UMP Audio] Found ${allMedia.length} media element(s)`);
+        }
+
+        allMedia.forEach(media => {
             // 1. VISIBILITY CHECK:
             // Skip if the element or any parent is hidden (display: none)
             let element = media;
@@ -97,20 +105,29 @@
     function setHighlight(element, color) {
         if (!element) return;
         
+        console.log(`[UMP Highlight] Applying ${color} highlight`);
+
         // Use multiple techniques for maximum visibility
         // !important ensures it won't be overridden by other styles
-        element.style.setProperty('border', `5px solid ${color}`, 'important');
-        element.style.setProperty('outline', `3px solid ${color}`, 'important');
-        element.style.setProperty('outline-offset', '2px', 'important');
-        element.style.setProperty('box-shadow', `0 0 20px ${color}`, 'important');
+        element.style.setProperty('border', `10px solid ${color}`, 'important');
+        element.style.setProperty('outline', `5px solid ${color}`, 'important');
+        element.style.setProperty('outline-offset', '3px', 'important');
+        element.style.setProperty('box-shadow', `0 0 30px 10px ${color}`, 'important');
+        element.style.setProperty('position', 'relative', 'important');
+        element.style.setProperty('z-index', '999999', 'important');
+
+        // Force repaint
+        element.offsetHeight;
     }
 
     function removeHighlight(element) {
         if (!element) return;
+        console.log('[UMP Highlight] Removing highlight');
         element.style.removeProperty('border');
         element.style.removeProperty('outline');
         element.style.removeProperty('outline-offset');
         element.style.removeProperty('box-shadow');
+        element.style.removeProperty('z-index');
     }
 
     // Helper: Precise Clicker (Fixes Double Skip)
@@ -149,6 +166,8 @@
         const timeLabel = document.querySelector(ISPRING_TIME_SELECTOR);
 
         if (nextBtn) {
+            console.log('[UMP iSpring] Button found!');
+
             if (timeLabel) {
                 const text = timeLabel.innerText || "";
                 const times = text.split('/');
@@ -162,6 +181,7 @@
 
                     if (isFinished) {
                         // ALWAYS apply green highlight when finished (fixes iSpring highlight bug)
+                        console.log('[UMP iSpring] 🟢 Applying GREEN highlight');
                         setHighlight(nextBtn, "#00ff00"); // Green
 
                         // Only click if enough time has passed since last click
@@ -174,11 +194,13 @@
                         }
                     } else {
                         // ALWAYS apply yellow highlight when waiting (fixes iSpring highlight bug)
+                        console.log(`[UMP iSpring] 🟡 Applying YELLOW highlight (${currentSec}/${totalSec})`);
                         setHighlight(nextBtn, "#FFFF00"); // Yellow
                     }
                 }
             } else {
                 // No timer found, just show yellow
+                console.log('[UMP iSpring] No timer found, applying YELLOW highlight');
                 setHighlight(nextBtn, "#FFFF00");
             }
             return false; // Found button, not finished
