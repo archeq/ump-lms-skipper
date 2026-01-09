@@ -1,15 +1,49 @@
 (function() {
     'use strict';
 
-    // --- CONFIGURATION ---
-    const TIME_SELECTOR = '.label.time';       
-    const NEXT_SELECTOR = '.component_container.next'; 
-    const POLLING_INTERVAL = 1000;             
+    // =================================================================
+    // CONFIGURATION
+    // =================================================================
+    
+    const POLLING_INTERVAL = 1000; // Check every 1s
+    const PLAYBACK_SPEED = 1.0;    // Safe speed for attendance
 
-    // --- CONTEXT CHECK ---
-    if (window.self === window.top) return;
+    // iSpring Settings
+    const ISPRING_TIME_SELECTOR = '.label.time';       
+    const ISPRING_NEXT_SELECTOR = '.component_container.next'; 
 
-    // --- HELPER: TIME PARSER ---
+    // Classic/Articulate Settings
+    const CLASSIC_BUTTONS = [
+        '#next', 
+        '#linkNext', 
+        'button[aria-label="Next"]', 
+        'button[aria-label="Dalej"]',
+        'div.next-button',
+        '.cs-next'
+    ];
+    const CLASSIC_DISABLED = ['cs-disabled', 'disabled', 'btn-disabled'];
+
+    // =================================================================
+    // SHARED UTILITIES
+    // =================================================================
+
+    if (window.self === window.top) return; // Exit if not in iframe
+
+    console.log("[UMP Universal] Active. Scanning for player type...");
+
+    // Helper: Keep videos running (Critical for both players)
+    function keepMediaAlive() {
+        document.querySelectorAll('video, audio').forEach(media => {
+            if (!media.muted) media.muted = true; // Mute to bypass browser block
+            if (media.playbackRate !== PLAYBACK_SPEED) media.playbackRate = PLAYBACK_SPEED;
+            
+            if (media.paused && media.readyState > 2) {
+                media.play().catch(e => {}); 
+            }
+        });
+    }
+
+    // Helper: Parse "MM:SS" strings
     function parseSeconds(timeStr) {
         if (!timeStr) return 0;
         timeStr = timeStr.trim();
@@ -19,49 +53,18 @@
         return 0;
     }
 
-    // --- HELPER: CLICKER (FIXED) ---
-    function triggerClick(element) {
-        console.log("[UMP Fix] Clicking ONCE...");
-        
-        // Visual Feedback
-        element.style.border = "5px solid #00ff00"; 
+    // =================================================================
+    // LOGIC A: ISPRING (Timer Based)
+    // =================================================================
 
-        // Send interaction events ONLY to the container
-        // We removed the secondary 'button.click()' to prevent double-skipping
-        const events = ['mouseover', 'mouseenter', 'mousedown', 'mouseup', 'click'];
-        events.forEach(type => {
-            element.dispatchEvent(new MouseEvent(type, {
-                bubbles: true, 
-                cancelable: true, 
-                view: window
-            }));
-        });
-    }
-
-    // --- HELPER: KICKSTART VIDEO ---
-    function keepTimerMoving() {
-        const mediaElements = document.querySelectorAll('video, audio');
-        mediaElements.forEach(media => {
-            if (!media.muted) media.muted = true;
-            if (media.paused && media.readyState > 2) {
-                media.play().catch(e => {}); 
-            }
-        });
-    }
-
-    // --- MAIN ENGINE ---
-    let isCoolingDown = false;
-
-    setInterval(() => {
-        keepTimerMoving();
-
-        if (isCoolingDown) return;
-
-        const timeLabel = document.querySelector(TIME_SELECTOR);
-        const nextBtn = document.querySelector(NEXT_SELECTOR);
+    function runISpringLogic() {
+        const timeLabel = document.querySelector(ISPRING_TIME_SELECTOR);
+        const nextBtn = document.querySelector(ISPRING_NEXT_SELECTOR);
 
         if (timeLabel && nextBtn) {
-            
+            // Apply visual border (Pink = iSpring Mode detected)
+            if (!nextBtn.style.border) nextBtn.style.border = "2px solid #ff00ff";
+
             const text = timeLabel.innerText || "";
             const times = text.split('/');
 
@@ -69,28 +72,111 @@
                 const currentSec = parseSeconds(times[0]);
                 const totalSec = parseSeconds(times[1]);
 
-                // Check if finished (allow 1s buffer)
-                const isFinished = currentSec >= (totalSec - 1); 
+                // Check if finished (1s buffer)
+                const isFinished = currentSec >= (totalSec - 1);
 
                 if (isFinished) {
-                    // CLICK!
-                    triggerClick(nextBtn);
+                    console.log("[UMP iSpring] Slide Done. Clicking...");
                     
-                    // Activate Cooldown to prevent spamming
-                    isCoolingDown = true;
-                    
-                    // Wait 4 seconds before looking for the next slide
-                    setTimeout(() => {
-                        if(nextBtn) nextBtn.style.border = "";
-                        isCoolingDown = false;
-                    }, 4000); 
+                    // Green Flash
+                    nextBtn.style.border = "5px solid #00ff00";
 
+                    // Single Shot Click on Container
+                    const events = ['mouseover', 'mouseenter', 'mousedown', 'mouseup', 'click'];
+                    events.forEach(type => {
+                        nextBtn.dispatchEvent(new MouseEvent(type, {
+                            bubbles: true, cancelable: true, view: window
+                        }));
+                    });
+
+                    return true; // Action taken
                 } else {
-                    // WAIT
-                    nextBtn.style.border = "3px solid #FFFF00"; 
+                    // Waiting
+                    nextBtn.style.border = "3px solid #FFFF00"; // Yellow
                 }
             }
+            return false; // Found player, but waiting
         }
+        return null; // iSpring not found
+    }
+
+    // =================================================================
+    // LOGIC B: CLASSIC / ARTICULATE (Attribute Based)
+    // =================================================================
+
+    function runClassicLogic() {
+        let targetBtn = null;
+
+        // Find first visible button from our list
+        for (let selector of CLASSIC_BUTTONS) {
+            const el = document.querySelector(selector);
+            if (el && el.offsetParent !== null) {
+                targetBtn = el;
+                break;
+            }
+        }
+
+        if (targetBtn) {
+            // Apply visual border (Cyan = Classic Mode detected)
+            if (!targetBtn.style.border) targetBtn.style.border = "2px solid #00ffff";
+
+            // Check Disabled State
+            const isClassDisabled = CLASSIC_DISABLED.some(cls => targetBtn.classList.contains(cls));
+            const isAriaDisabled = targetBtn.getAttribute('aria-disabled') === 'true';
+
+            if (!isClassDisabled && !isAriaDisabled) {
+                console.log("[UMP Classic] Button Enabled. Clicking...");
+                
+                // Green Flash
+                targetBtn.style.border = "5px solid #00ff00";
+
+                // Standard Click
+                targetBtn.click();
+                
+                return true; // Action taken
+            } else {
+                // Waiting
+                targetBtn.style.border = "3px solid #FFFF00"; // Yellow
+            }
+            return false;
+        }
+        return null; // Classic player not found
+    }
+
+    // =================================================================
+    // MAIN LOOP
+    // =================================================================
+
+    let isCoolingDown = false;
+
+    setInterval(() => {
+        keepMediaAlive(); // Universal Autoplay Fix
+
+        if (isCoolingDown) return;
+
+        // Priority 1: Try iSpring Logic
+        // We try this first because it has a specific timer structure
+        const iSpringResult = runISpringLogic();
+        
+        if (iSpringResult !== null) {
+            // We are definitely in iSpring mode.
+            if (iSpringResult === true) { 
+                // We clicked. Cooldown.
+                isCoolingDown = true;
+                setTimeout(() => { isCoolingDown = false; }, 4000);
+            }
+            return; // Don't run Classic logic if iSpring was found
+        }
+
+        // Priority 2: Try Classic Logic
+        const classicResult = runClassicLogic();
+
+        if (classicResult === true) {
+            // We clicked. Cooldown.
+            isCoolingDown = true;
+            setTimeout(() => { isCoolingDown = false; }, 2500);
+        }
+
     }, POLLING_INTERVAL);
 
 })();
