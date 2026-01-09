@@ -5,8 +5,8 @@
     // CONFIGURATION
     // =================================================================
     
-    const POLLING_INTERVAL = 1000; // Check every 1s
-    const PLAYBACK_SPEED = 1.0;    // Safe speed for attendance
+    const POLLING_INTERVAL = 1000; 
+    const PLAYBACK_SPEED = 1.0;
 
     // iSpring Settings
     const ISPRING_TIME_SELECTOR = '.label.time';       
@@ -14,48 +14,54 @@
 
     // Classic/Articulate Settings
     const CLASSIC_BUTTONS = [
-        '#next', 
-        '#linkNext', 
-        'button[aria-label="Next"]', 
-        'button[aria-label="Dalej"]',
-        'div.next-button',
-        '.cs-next'
+        '#next', '#linkNext', 
+        'button[aria-label="Next"]', 'button[aria-label="Dalej"]',
+        'div.next-button', '.cs-next'
     ];
     const CLASSIC_DISABLED = ['cs-disabled', 'disabled', 'btn-disabled'];
 
     // =================================================================
-    // SHARED UTILITIES
+    // UTILITIES
     // =================================================================
 
-    if (window.self === window.top) return; // Exit if not in iframe
+    if (window.self === window.top) return; 
 
-    console.log("[UMP Universal] Active. Scanning for player type...");
-
-    // Helper: Apply Border safely (fixes the visibility bug)
-    function forceBorder(element, color) {
-        if (!element) return;
-        // We use !important to override any specific player styles
-        element.style.cssText += `border: 4px solid ${color} !important; box-sizing: border-box !important;`;
-    }
-
-    // Helper: Remove Border
-    function clearBorder(element) {
-        if (!element) return;
-        element.style.border = "";
-    }
-
-    // Helper: Keep videos running
-    function keepMediaAlive() {
+    // Helper: Smart Video Manager (Fixes the Mute Issue)
+    function manageVideoState() {
         document.querySelectorAll('video, audio').forEach(media => {
-            if (!media.muted) media.muted = true; 
+            // Set speed preference
             if (media.playbackRate !== PLAYBACK_SPEED) media.playbackRate = PLAYBACK_SPEED;
+
+            // ONLY kickstart if it is PAUSED
             if (media.paused && media.readyState > 2) {
-                media.play().catch(e => {}); 
+                // We attempt to play. If it fails, we mute and try again.
+                // This preserves sound if you manually unmuted it!
+                media.play().catch(() => {
+                    if (!media.muted) {
+                        media.muted = true; // Only mute if absolutely necessary
+                        media.play().catch(() => {});
+                    }
+                });
             }
         });
     }
 
-    // Helper: Parse "MM:SS" strings
+    // Helper: High-Visibility Highlighter (Fixes the Border Issue)
+    // Uses box-shadow (inset) which cannot be clipped by overflow:hidden
+    function highlight(element, color) {
+        if (!element) return;
+        element.style.cssText += `
+            box-shadow: inset 0 0 0 5px ${color} !important;
+            z-index: 99999 !important;
+        `;
+    }
+
+    function removeHighlight(element) {
+        if (!element) return;
+        element.style.boxShadow = "";
+    }
+
+    // Helper: Parse "MM:SS"
     function parseSeconds(timeStr) {
         if (!timeStr) return 0;
         timeStr = timeStr.trim();
@@ -80,43 +86,37 @@
             if (times.length === 2) {
                 const currentSec = parseSeconds(times[0]);
                 const totalSec = parseSeconds(times[1]);
-
-                // Check if finished (1s buffer)
+                
+                // Allow 1s buffer
                 const isFinished = currentSec >= (totalSec - 1);
 
                 if (isFinished) {
-                    console.log("[UMP iSpring] Slide Done. Clicking...");
-                    
-                    // Green Flash
-                    forceBorder(nextBtn, "#00ff00"); // Green
+                    console.log("[UMP iSpring] Done. Clicking...");
+                    highlight(nextBtn, "#00ff00"); // Green
 
-                    // Single Shot Click on Container
-                    const events = ['mouseover', 'mouseenter', 'mousedown', 'mouseup', 'click'];
-                    events.forEach(type => {
+                    // Hover + Click events
+                    ['mouseover', 'mouseenter', 'mousedown', 'mouseup', 'click'].forEach(type => {
                         nextBtn.dispatchEvent(new MouseEvent(type, {
                             bubbles: true, cancelable: true, view: window
                         }));
                     });
 
-                    return true; // Action taken
+                    return true; // Clicked
                 } else {
-                    // Waiting
-                    forceBorder(nextBtn, "#FFFF00"); // Yellow
+                    highlight(nextBtn, "#FF00FF"); // Magenta = Waiting (High Contrast)
                 }
             }
-            return false; // Found player, but waiting
+            return false; 
         }
-        return null; // iSpring not found
+        return null; 
     }
 
     // =================================================================
-    // LOGIC B: CLASSIC / ARTICULATE (Attribute Based)
+    // LOGIC B: CLASSIC (Attribute Based)
     // =================================================================
 
     function runClassicLogic() {
         let targetBtn = null;
-
-        // Find first visible button
         for (let selector of CLASSIC_BUTTONS) {
             const el = document.querySelector(selector);
             if (el && el.offsetParent !== null) {
@@ -126,61 +126,49 @@
         }
 
         if (targetBtn) {
-            // Check Disabled State
             const isClassDisabled = CLASSIC_DISABLED.some(cls => targetBtn.classList.contains(cls));
             const isAriaDisabled = targetBtn.getAttribute('aria-disabled') === 'true';
 
             if (!isClassDisabled && !isAriaDisabled) {
-                console.log("[UMP Classic] Button Enabled. Clicking...");
-                
-                // Green Flash
-                forceBorder(targetBtn, "#00ff00");
-
-                // Standard Click
+                console.log("[UMP Classic] Clicking...");
+                highlight(targetBtn, "#00ff00"); // Green
                 targetBtn.click();
-                
-                return true; // Action taken
+                return true; 
             } else {
-                // Waiting
-                forceBorder(targetBtn, "#FFFF00"); // Yellow
+                highlight(targetBtn, "#FFFF00"); // Yellow = Waiting
             }
             return false;
         }
-        return null; // Classic player not found
+        return null; 
     }
 
     // =================================================================
-    // MAIN LOOP
+    // LOOP
     // =================================================================
 
     let isCoolingDown = false;
 
     setInterval(() => {
-        keepMediaAlive();
+        manageVideoState(); // Keeps videos playing without forcing mute
 
         if (isCoolingDown) return;
 
-        // Priority 1: iSpring
+        // 1. Try iSpring
         const iSpringResult = runISpringLogic();
-        
         if (iSpringResult !== null) {
             if (iSpringResult === true) { 
-                // We clicked. Cooldown.
                 isCoolingDown = true;
-                
-                // Clear border after click so it doesn't look stuck
                 const btn = document.querySelector(ISPRING_NEXT_SELECTOR);
                 setTimeout(() => { 
-                    clearBorder(btn); 
+                    removeHighlight(btn); 
                     isCoolingDown = false; 
                 }, 4000);
             }
             return; 
         }
 
-        // Priority 2: Classic
+        // 2. Try Classic
         const classicResult = runClassicLogic();
-
         if (classicResult === true) {
             isCoolingDown = true;
             setTimeout(() => { isCoolingDown = false; }, 2500);
