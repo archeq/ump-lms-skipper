@@ -2,106 +2,103 @@
     'use strict';
 
     // --- CONFIGURATION ---
-    const TARGET_TEXTS = ["NASTĘPNY", "DALEJ", "NEXT"];
-    const POLLING_INTERVAL = 2000; // Check every 2s
-    const PLAYBACK_SPEED = 1.0;    
+    const POLLING_INTERVAL = 1000; // Check every 1s
+    const PLAYBACK_SPEED = 1.0;    // Set to 1.5 or 2.0 if you want to watch faster
+    const TIME_THRESHOLD = 0.5;    // Click when within 0.5s of the end
 
-    // --- HELPER: ENSURE VIDEO PLAYS ---
-    function ensureMediaPlaying() {
+    // --- HELPER: MANAGE VIDEO ---
+    function checkMediaStatus() {
         const mediaElements = document.querySelectorAll('video, audio');
-        mediaElements.forEach(media => {
-            // 1. Mute is required for auto-progress
-            if (!media.muted) media.muted = true;
-            
-            // 2. Ensure it is actually running
-            if (media.paused && media.readyState > 2) {
-                media.play().catch(e => {}); 
-            }
+        let isPlaying = false;
+        let isFinished = true; // Assume finished unless we find an active video
 
-            // 3. Set Speed
-            if (media.playbackRate !== PLAYBACK_SPEED) {
-                media.playbackRate = PLAYBACK_SPEED;
+        mediaElements.forEach(media => {
+            // 1. Ensure muted (for browser autoplay) & set speed
+            if (!media.muted) media.muted = true;
+            if (media.playbackRate !== PLAYBACK_SPEED) media.playbackRate = PLAYBACK_SPEED;
+
+            // 2. Check if this media has a real duration
+            if (media.duration && !isNaN(media.duration) && media.duration > 1) {
+                // We found meaningful media
+                isPlaying = true;
+
+                // 3. Kickstart if paused
+                if (media.paused && media.readyState > 2) {
+                    media.play().catch(e => {}); 
+                }
+
+                // 4. CHECK TIME: Are we at the end?
+                const timeLeft = media.duration - media.currentTime;
+                // console.log(`[UMP Time] Time Left: ${timeLeft.toFixed(1)}s`);
+
+                if (timeLeft > TIME_THRESHOLD) {
+                    isFinished = false; // Still watching!
+                }
             }
         });
+
+        // Returns object: { hasMedia: boolean, readyToAdvance: boolean }
+        return { 
+            hasMedia: isPlaying, 
+            readyToAdvance: isFinished 
+        };
     }
 
-    // --- HELPER: SAFE CLICKER ---
-    function triggerClick(element) {
-        console.log("[UMP Fix] Unlocked! Clicking:", element);
+    // --- HELPER: CLICKER ---
+    function clickNext(element) {
+        console.log("[UMP Time] Slide Complete. Clicking...");
         
         // Visual Feedback (Green Flash)
         element.style.border = "5px solid #00ff00"; 
 
-        // 1. Dispatch Events (The most reliable way for iSpring)
-        // We send these to the Container AND the specific Button
+        // Send Click Events
         const events = ['mouseover', 'mouseenter', 'mousedown', 'mouseup', 'click'];
-        
         events.forEach(type => {
-            const evt = new MouseEvent(type, {
-                bubbles: true, 
-                cancelable: true, 
-                view: window
-            });
-            element.dispatchEvent(evt);
+            element.dispatchEvent(new MouseEvent(type, {
+                bubbles: true, cancelable: true, view: window
+            }));
         });
 
-        // 2. Find the specific HTML button inside and click it (ignoring SVGs)
-        // This fixes the "child.click is not a function" error
+        // Click the internal button if accessible
         const actualBtn = element.querySelector('button');
-        if (actualBtn) {
-            actualBtn.click();
-        }
+        if (actualBtn) actualBtn.click();
     }
 
-    // --- MAIN SEARCH LOGIC ---
-    function scanAndWait() {
-        // 1. Keep video running
-        ensureMediaPlaying();
+    // --- MAIN ENGINE ---
+    let isCoolingDown = false;
 
-        // 2. Find the container
-        let target = null;
-        
-        // Priority A: The specific class from your screenshot
-        const directMatch = document.querySelector('.component_container.next');
-        if (directMatch && directMatch.offsetParent !== null) {
-            target = directMatch;
-        }
+    setInterval(() => {
+        if (isCoolingDown) return;
 
-        // Priority B: Text Search (Fallback)
-        if (!target) {
-            const allDivs = document.querySelectorAll('div, button, span');
-            for (let el of allDivs) {
-                if (el.innerText && TARGET_TEXTS.includes(el.innerText.trim().toUpperCase())) {
-                    if (el.offsetParent !== null && el.tagName !== 'SCRIPT') {
-                        let parent = el;
-                        while (parent && !parent.classList.contains('component_container') && parent !== document.body) {
-                            parent = parent.parentElement;
-                        }
-                        target = (parent && parent !== document.body) ? parent : el;
-                        break;
-                    }
+        // 1. Find the Next Button Container
+        const target = document.querySelector('.component_container.next');
+
+        if (target && target.offsetParent !== null) {
+            
+            // 2. Check the Video Status
+            const status = checkMediaStatus();
+
+            if (status.hasMedia && !status.readyToAdvance) {
+                // CASE A: Video is playing. WAIT.
+                target.style.border = "4px solid #FFFF00"; // Yellow = Waiting for timer
+                // console.log("[UMP Time] Waiting for video...");
+            
+            } else {
+                // CASE B: Video finished OR No video on this slide. CLICK.
+                
+                // Double check we haven't already clicked
+                if (!isCoolingDown) {
+                    clickNext(target);
+                    
+                    // Cooldown logic
+                    isCoolingDown = true;
+                    setTimeout(() => {
+                        if(target) target.style.border = "";
+                        isCoolingDown = false;
+                    }, 4000); // Wait 4s for next slide
                 }
             }
-        }
-
-        // 3. Check Status & Execute
-        if (target) {
-            // Check for the "disabled" class (Moodle/iSpring lock)
-            const isLocked = target.classList.contains('disabled') || 
-                             target.classList.contains('blocked') || 
-                             target.getAttribute('aria-disabled') === 'true';
-
-            if (isLocked) {
-                // LOCKED: Wait.
-                target.style.border = "3px solid #FFFF00"; // Yellow = Waiting
-            } else {
-                // UNLOCKED: Click.
-                triggerClick(target);
-            }
-        }
-    }
-
-    // --- INIT ---
-    setInterval(scanAndWait, POLLING_INTERVAL);
+        } 
+    }, POLLING_INTERVAL);
 
 })();
