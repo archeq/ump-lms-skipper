@@ -1,4 +1,4 @@
-# ump lms skipper
+# UMP LMS skipper
 Zvibecodowana wtyczka do przeglądarki do automatyzacji przycisku 'Dalej' w odtwarzaczu na portalu lms.ump.edu.pl
 
 
