@@ -89,8 +89,15 @@
         // Visual Feedback (Green Flash)
         element.style.border = "5px solid #00ff00";
 
-        // Dispatch Events
-        const events = ['mouseover', 'mouseenter', 'mousedown', 'mouseup', 'click'];
+        const actualBtn = element.querySelector('button');
+
+        // Dispatch Events (Simulate interaction)
+        // EXCLUDE 'click' from here to avoid double-firing if we use actualBtn.click()
+        const events = ['mouseover', 'mouseenter', 'mousedown', 'mouseup'];
+        if (!actualBtn) {
+            events.push('click'); // Only manually dispatch click if we can't find a button
+        }
+
         events.forEach(type => {
             const evt = new MouseEvent(type, {
                 bubbles: true,
@@ -100,8 +107,10 @@
             element.dispatchEvent(evt);
         });
 
-        const actualBtn = element.querySelector('button');
-        if (actualBtn) actualBtn.click();
+        if (actualBtn) {
+            // This triggers a real click event which bubbles up
+            actualBtn.click();
+        }
     }
 
     // =================================================================
@@ -196,8 +205,15 @@
                                 lastClickTime = now;
                                 lastProcessedTimer = text; // Remember this state as "clicked"
 
-                                // Dispatch Events
-                                const events = ['mouseover', 'mouseenter', 'mousedown', 'mouseup', 'click'];
+                                const actualBtn = target.querySelector('button');
+
+                                // Dispatch Events (Simulate interaction)
+                                // EXCLUDE 'click' if we have a button to click
+                                const events = ['mouseover', 'mouseenter', 'mousedown', 'mouseup'];
+                                if (!actualBtn) {
+                                    events.push('click');
+                                }
+
                                 events.forEach(type => {
                                     const evt = new MouseEvent(type, {
                                         bubbles: true,
@@ -207,7 +223,6 @@
                                     target.dispatchEvent(evt);
                                 });
 
-                                const actualBtn = target.querySelector('button');
                                 if (actualBtn) actualBtn.click();
                             } else {
                                 // Cooldown active
