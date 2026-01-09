@@ -21,24 +21,22 @@
     const CLASSIC_DISABLED = ['cs-disabled', 'disabled', 'btn-disabled'];
 
     // =================================================================
-    // UTILITIES
+    // SHARED UTILITIES
     // =================================================================
 
     if (window.self === window.top) return; 
 
-    // Helper: Smart Video Manager (Fixes the Mute Issue)
+    // Helper: Smart Video Manager (Preserves Sound)
     function manageVideoState() {
         document.querySelectorAll('video, audio').forEach(media => {
-            // Set speed preference
             if (media.playbackRate !== PLAYBACK_SPEED) media.playbackRate = PLAYBACK_SPEED;
 
-            // ONLY kickstart if it is PAUSED
+            // Only act if paused
             if (media.paused && media.readyState > 2) {
-                // We attempt to play. If it fails, we mute and try again.
-                // This preserves sound if you manually unmuted it!
                 media.play().catch(() => {
+                    // Only mute if absolutely required by browser
                     if (!media.muted) {
-                        media.muted = true; // Only mute if absolutely necessary
+                        media.muted = true; 
                         media.play().catch(() => {});
                     }
                 });
@@ -46,19 +44,18 @@
         });
     }
 
-    // Helper: High-Visibility Highlighter (Fixes the Border Issue)
-    // Uses box-shadow (inset) which cannot be clipped by overflow:hidden
-    function highlight(element, color) {
+    // Helper: Apply Border (The Fix)
+    // Uses standard border + box-sizing to match your working snippet
+    function setBorder(element, color) {
         if (!element) return;
-        element.style.cssText += `
-            box-shadow: inset 0 0 0 5px ${color} !important;
-            z-index: 99999 !important;
-        `;
+        // !important ensures it overrides iSpring's CSS
+        // box-sizing ensures the border is visible even inside overflow:hidden containers
+        element.style.cssText += `border: 5px solid ${color} !important; box-sizing: border-box !important;`;
     }
 
-    function removeHighlight(element) {
+    function removeBorder(element) {
         if (!element) return;
-        element.style.boxShadow = "";
+        element.style.border = "";
     }
 
     // Helper: Parse "MM:SS"
@@ -87,14 +84,14 @@
                 const currentSec = parseSeconds(times[0]);
                 const totalSec = parseSeconds(times[1]);
                 
-                // Allow 1s buffer
+                // Check if finished (1s buffer)
                 const isFinished = currentSec >= (totalSec - 1);
 
                 if (isFinished) {
                     console.log("[UMP iSpring] Done. Clicking...");
-                    highlight(nextBtn, "#00ff00"); // Green
+                    setBorder(nextBtn, "#00ff00"); // Green Border
 
-                    // Hover + Click events
+                    // Send Hover + Click events
                     ['mouseover', 'mouseenter', 'mousedown', 'mouseup', 'click'].forEach(type => {
                         nextBtn.dispatchEvent(new MouseEvent(type, {
                             bubbles: true, cancelable: true, view: window
@@ -103,7 +100,8 @@
 
                     return true; // Clicked
                 } else {
-                    highlight(nextBtn, "#FF00FF"); // Magenta = Waiting (High Contrast)
+                    // Waiting
+                    setBorder(nextBtn, "#FFFF00"); // Yellow Border
                 }
             }
             return false; 
@@ -131,11 +129,11 @@
 
             if (!isClassDisabled && !isAriaDisabled) {
                 console.log("[UMP Classic] Clicking...");
-                highlight(targetBtn, "#00ff00"); // Green
+                setBorder(targetBtn, "#00ff00"); // Green
                 targetBtn.click();
                 return true; 
             } else {
-                highlight(targetBtn, "#FFFF00"); // Yellow = Waiting
+                setBorder(targetBtn, "#FFFF00"); // Yellow
             }
             return false;
         }
@@ -149,7 +147,7 @@
     let isCoolingDown = false;
 
     setInterval(() => {
-        manageVideoState(); // Keeps videos playing without forcing mute
+        manageVideoState(); 
 
         if (isCoolingDown) return;
 
@@ -160,7 +158,7 @@
                 isCoolingDown = true;
                 const btn = document.querySelector(ISPRING_NEXT_SELECTOR);
                 setTimeout(() => { 
-                    removeHighlight(btn); 
+                    removeBorder(btn); 
                     isCoolingDown = false; 
                 }, 4000);
             }
@@ -171,6 +169,7 @@
         const classicResult = runClassicLogic();
         if (classicResult === true) {
             isCoolingDown = true;
+            // Clear border instantly for classic players as they usually refresh the DOM
             setTimeout(() => { isCoolingDown = false; }, 2500);
         }
 
