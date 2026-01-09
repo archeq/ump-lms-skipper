@@ -25,11 +25,10 @@
     // SHARED UTILITIES
     // =================================================================
 
-    if (window.self === window.top) return;
+    console.log('[UMP] Script loaded and running');
 
-    console.log('[UMP] Script loaded and running in iframe');
 
-    // Helper: Smart Video Manager (Fixes "10 Voices" Bug)
+    // Helper: Smart Video Manager (Same logic as old working code)
     let hasSimulatedInteraction = false;
 
     function manageVideoState() {
@@ -78,26 +77,27 @@
                 return;
             }
 
-            // 3. Set playback speed
-            if (media.playbackRate !== PLAYBACK_SPEED) media.playbackRate = PLAYBACK_SPEED;
+            // 3. Mute is REQUIRED for autoplay (same as old code)
+            if (!media.muted) {
+                media.muted = true;
+                console.log('[UMP Audio] Muted media element for autoplay');
+            }
 
-            // 4. Only play if paused and ready
+            // 4. Set playback speed
+            if (media.playbackRate !== PLAYBACK_SPEED) {
+                media.playbackRate = PLAYBACK_SPEED;
+            }
+
+            // 5. Ensure it is actually running
             if (media.paused && media.readyState > 2) {
                 media.play().catch(err => {
-                    // Only mute if browser requires it for autoplay
-                    console.log('[UMP Audio] Play failed, trying with mute:', err.message);
-                    if (!media.muted) {
-                        media.muted = true;
-                        media.play().catch(() => {
-                            console.log('[UMP Audio] Still cannot play, even muted');
-                        });
-                    }
+                    console.log('[UMP Audio] Play failed even with mute:', err.message);
                 });
             }
         });
     }
 
-    // Helper: Apply High-Vis Highlight (Fixes iSpring Border)
+    // Helper: Apply High-Vis Highlight (Same as old working code)
     function setHighlight(element, color) {
         if (!element) {
             console.log('[UMP Highlight] ERROR: Element is null!');
@@ -107,17 +107,9 @@
         try {
             console.log(`[UMP Highlight] Applying ${color} highlight to:`, element.className);
 
-            // Use multiple techniques for maximum visibility
-            // !important ensures it won't be overridden by other styles
-            element.style.setProperty('border', `10px solid ${color}`, 'important');
-            element.style.setProperty('outline', `5px solid ${color}`, 'important');
-            element.style.setProperty('outline-offset', '3px', 'important');
-            element.style.setProperty('box-shadow', `0 0 30px 10px ${color}`, 'important');
-            element.style.setProperty('position', 'relative', 'important');
-            element.style.setProperty('z-index', '999999', 'important');
-
-            // Force repaint
-            element.offsetHeight;
+            // Use the EXACT same method as the old working code
+            // Simple direct assignment works better than setProperty with !important
+            element.style.border = `5px solid ${color}`;
 
             console.log(`[UMP Highlight] ✅ Successfully applied ${color} highlight`);
         } catch (err) {
@@ -128,11 +120,7 @@
     function removeHighlight(element) {
         if (!element) return;
         console.log('[UMP Highlight] Removing highlight');
-        element.style.removeProperty('border');
-        element.style.removeProperty('outline');
-        element.style.removeProperty('outline-offset');
-        element.style.removeProperty('box-shadow');
-        element.style.removeProperty('z-index');
+        element.style.border = "";
     }
 
     // Helper: Precise Clicker (Fixes Double Skip)
